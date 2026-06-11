@@ -16,7 +16,7 @@ import {
   CtaButton,
   GhostButton,
   InlineError,
-} from './_components';
+} from '../../components/auth';
 import { useT } from '../../lib/providers';
 import { supabase } from '../../lib/supabase';
 import { COLOR_TEXT_DISABLED } from '../../components/constants';

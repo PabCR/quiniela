@@ -23,7 +23,7 @@ import {
   AuthScreen,
   CtaButton,
   InlineError,
-} from './_components';
+} from '../../components/auth';
 import { useT } from '../../lib/providers';
 import { normalizeInviteCode, setPendingInviteCode } from '../../lib/onboarding';
 import { supabase } from '../../lib/supabase';

@@ -24,10 +24,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useLang } from '../../lib/providers';
-import { SHADOW_CARD, TAP_TARGET } from '../../lib/theme';
-import type { Lang } from '../../lib/types';
-import { COLOR_ON_ACCENT } from '../../components/constants';
+import { useLang } from '../lib/providers';
+import { SHADOW_CARD, TAP_TARGET } from '../lib/theme';
+import type { Lang } from '../lib/types';
+import { COLOR_ON_ACCENT } from './constants';
 
 /* ---- ES/EN segmented toggle (top-right of every auth screen) ---- */
 

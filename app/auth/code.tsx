@@ -21,7 +21,7 @@ import {
   CtaButton,
   GhostButton,
   InlineError,
-} from './_components';
+} from '../../components/auth';
 import { useSession, useT } from '../../lib/providers';
 import { supabase } from '../../lib/supabase';
 

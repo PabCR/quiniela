@@ -12,7 +12,8 @@
 
 import { Text, View } from 'react-native';
 
-import { IcLock, PointsTag } from './index';
+import { IcLock } from './icons';
+import { PointsTag } from './PointsTag';
 import { Chip } from './Chip';
 import { COLOR_TEXT_3, TABULAR } from './constants';
 import { SHADOW_CARD } from '../lib/theme';

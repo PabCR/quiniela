@@ -13,7 +13,7 @@
  * a dot + "Live", void chips carry an em-dash or label, etc.).
  */
 
-import { Text, View, type ViewStyle } from 'react-native';
+import { Text, View, type TextStyle, type ViewStyle } from 'react-native';
 
 import { SHADOW_CARD } from '../lib/theme';
 import { TABULAR } from './constants';
@@ -65,7 +65,11 @@ export function Chip({
   // The "corrected" note is a bare colored caption, not a filled pill.
   if (variant === 'corrected') {
     return (
-      <Text className="text-caption font-medium text-partial" style={style}>
+      <Text
+        className="text-caption font-medium text-partial"
+        // Layout-only subset (margins/alignment) — safe to apply to Text.
+        style={style as TextStyle}
+      >
         {label}
       </Text>
     );
