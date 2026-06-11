@@ -1,8 +1,9 @@
 # sync-results — Edge Function
 
-Scheduled every 10 minutes via pg_cron + pg_net. Fetches fixture results from
-API-Football and writes provisional scores, auto-confirms stale provisionals,
-and locks pool scoring when the first game with guesses has kicked off.
+Scheduled every 10 minutes via pg_cron + pg_net. Fetches match results from
+football-data.org (v4) and writes provisional scores, auto-confirms stale
+provisionals, and locks pool scoring when the first game with guesses has
+kicked off.
 
 ---
 
@@ -12,14 +13,14 @@ and locks pool scoring when the first game with guesses has kicked off.
 |---|---|---|
 | `SUPABASE_URL` | Auto-injected by runtime | Project API URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Auto-injected by runtime | Bypasses RLS; also used as the auth bearer the cron caller sends |
-| `API_FOOTBALL_KEY` | Supabase Function secrets | `x-apisports-key` header value |
-| `API_FOOTBALL_LEAGUE_ID` | Supabase Function secrets | Numeric league id for WC 2026 (e.g. `"1"`) |
+| `FOOTBALL_DATA_TOKEN` | Supabase Function secrets | football-data.org API token (`X-Auth-Token` header) |
+| `FOOTBALL_DATA_COMPETITION` | Supabase Function secrets | Competition code or id (optional — defaults to `WC`, the FIFA World Cup) |
 
 ### Setting secrets (remote)
 
 ```bash
-supabase secrets set API_FOOTBALL_KEY=your_key_here
-supabase secrets set API_FOOTBALL_LEAGUE_ID=1
+supabase secrets set FOOTBALL_DATA_TOKEN=your_token_here
+supabase secrets set FOOTBALL_DATA_COMPETITION=WC
 ```
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are auto-injected — do not set
@@ -120,21 +121,22 @@ Expected response when no games are in the active window (frugality gate):
 }
 ```
 
-When games are in window but `API_FOOTBALL_KEY` is not set (safe fallback):
+When games are in window but `FOOTBALL_DATA_TOKEN` is not set (safe fallback):
 
 ```json
 {
-  "message": "Games in window but missing env vars: API_FOOTBALL_KEY — skipping API call",
+  "message": "Games in window but missing env vars: FOOTBALL_DATA_TOKEN — skipping API call",
   "stats": { ... }
 }
 ```
 
 ---
 
-## Frugality (free-tier API: 100 req/day)
+## Frugality (free-tier API: 10 req/min)
 
-The function gates the API-Football call. A call is made **only** when at least
-one non-voided game has a kickoff within:
+football-data.org's free tier allows **10 requests/minute** with no daily cap,
+so quota pressure is low. The function still gates the API call as hygiene: a
+call is made **only** when at least one non-voided game has a kickoff within:
 
 ```
 [now() - 4 hours,  now() + 5 minutes]
@@ -142,7 +144,7 @@ one non-voided game has a kickoff within:
 
 Outside of match days this means zero API calls. On heavy match days (multiple
 overlapping windows) the call is still exactly **one** request per 10-minute
-cron tick where the gate passes.
+cron tick where the gate passes — far below the per-minute limit.
 
 The local maintenance steps (auto-confirm + pool locking) always run regardless
 of whether the frugality gate passes.

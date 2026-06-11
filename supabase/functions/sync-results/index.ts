@@ -2,13 +2,13 @@
  * sync-results — Supabase Edge Function
  *
  * Scheduled every 10 minutes via pg_cron + pg_net (see migration 0009_cron_sync.sql).
- * Fetches finished / live fixtures from API-Football and writes provisional results,
- * auto-confirms stale provisionals, and locks pool scoring when applicable.
+ * Fetches finished / live matches from football-data.org (v4) and writes provisional
+ * results, auto-confirms stale provisionals, and locks pool scoring when applicable.
  *
  * ─── Required environment variables ─────────────────────────────────────────────
- *   API_FOOTBALL_KEY         — x-apisports-key header value
- *   API_FOOTBALL_LEAGUE_ID   — numeric league id for WC 2026 (e.g. "1")
- *   SUPABASE_URL             — project URL (auto-injected by Supabase runtime)
+ *   FOOTBALL_DATA_TOKEN       — X-Auth-Token header value (football-data.org API token)
+ *   FOOTBALL_DATA_COMPETITION — competition code or id (default "WC" = FIFA World Cup)
+ *   SUPABASE_URL              — project URL (auto-injected by Supabase runtime)
  *   SUPABASE_SERVICE_ROLE_KEY — service-role JWT (auto-injected; also used as auth
  *                               bearer by the cron caller to protect this endpoint)
  *
@@ -26,40 +26,43 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// ─── Types (football-data.org v4) ──────────────────────────────────────────────
 
-interface APIFixtureTeam {
+interface FDTeam {
+  id: number | null; // null for undetermined knockout slots
+  name: string | null;
+  shortName: string | null;
+  tla: string | null;
+}
+
+interface FDScorePair {
+  home: number | null;
+  away: number | null;
+}
+
+interface FDScore {
+  winner: "HOME_TEAM" | "AWAY_TEAM" | "DRAW" | null;
+  duration: "REGULAR" | "EXTRA_TIME" | "PENALTY_SHOOTOUT";
+  fullTime: FDScorePair;
+  regularTime?: FDScorePair | null; // present when the match went to extra time
+  extraTime?: FDScorePair | null;
+  penalties?: FDScorePair | null;
+}
+
+interface FDMatch {
   id: number;
-  name: string;
+  utcDate: string; // ISO 8601 UTC
+  status: string;
+  stage: string;
+  group: string | null;
+  homeTeam: FDTeam;
+  awayTeam: FDTeam;
+  score: FDScore;
 }
 
-interface APIFixture {
-  fixture: {
-    id: number;
-    date: string; // ISO 8601 UTC
-    venue: { city: string | null };
-    status: { short: string; elapsed: number | null };
-  };
-  league: {
-    id: number;
-    round: string;
-    season: number;
-  };
-  teams: {
-    home: APIFixtureTeam;
-    away: APIFixtureTeam;
-  };
-  score: {
-    fulltime: { home: number | null; away: number | null };
-    extratime: { home: number | null; away: number | null };
-    penalty: { home: number | null; away: number | null };
-  };
-}
-
-interface APIResponse<T> {
-  results: number;
-  response: T[];
-  errors?: unknown;
+interface FDMatchesResponse {
+  resultSet?: { count: number };
+  matches: FDMatch[];
 }
 
 interface GameRow {
@@ -70,6 +73,7 @@ interface GameRow {
   score_away: number | null;
   result_status: string;
   voided: boolean;
+  postponed: boolean;
   updated_at: string;
 }
 
@@ -83,17 +87,17 @@ interface SyncStats {
   errors: string[];
 }
 
-// ─── Finished statuses from API-Football ───────────────────────────────────────
+// ─── football-data.org match statuses ──────────────────────────────────────────
+// AWARDED is a decided result (technical win/walkover) — treat as finished so the
+// score is written and the advancer recorded, instead of stalling forever.
 
-const FINISHED_STATUSES = new Set(["FT", "AET", "PEN"]);
+const FINISHED_STATUSES = new Set(["FINISHED", "AWARDED"]);
 
 // Statuses that indicate a postponement / cancellation
-const POSTPONED_STATUSES = new Set(["PST", "CANC", "SUSP", "ABD", "AWD", "WO"]);
+const POSTPONED_STATUSES = new Set(["POSTPONED", "CANCELLED"]);
 
-// Live statuses
-const LIVE_STATUSES = new Set([
-  "1H", "HT", "2H", "ET", "BT", "P", "INT", "LIVE",
-]);
+// In-play statuses (SUSPENDED may resume the same day — not a postponement)
+const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "SUSPENDED"]);
 
 // ─── Auth guard ────────────────────────────────────────────────────────────────
 
@@ -103,78 +107,81 @@ function authorize(req: Request, serviceRoleKey: string): boolean {
   return token === serviceRoleKey;
 }
 
-// ─── API-Football fetch ─────────────────────────────────────────────────────────
+// ─── football-data.org fetch ────────────────────────────────────────────────────
 
-async function fetchFixtures(
-  leagueId: string,
-  season: number,
-  apiKey: string,
-): Promise<APIFixture[]> {
+async function fetchMatches(
+  competition: string,
+  apiToken: string,
+): Promise<FDMatch[]> {
+  // No season filter: the endpoint defaults to the competition's current season.
   const url =
-    `https://v3.football.api-sports.io/fixtures?league=${leagueId}&season=${season}`;
+    `https://api.football-data.org/v4/competitions/${competition}/matches`;
 
   const res = await fetch(url, {
-    headers: {
-      "x-apisports-key": apiKey,
-      "Content-Type": "application/json",
-    },
+    headers: { "X-Auth-Token": apiToken },
   });
 
   if (!res.ok) {
+    // football-data.org returns real HTTP error codes (403 bad token, 429 rate
+    // limit) with a JSON body — surface its message, not just the status line.
+    let detail = "";
+    try {
+      const errBody = (await res.json()) as { message?: string; error?: string };
+      detail = errBody.message ?? errBody.error ?? "";
+    } catch {
+      // non-JSON error body — status line is all we have
+    }
+    const remaining = res.headers.get("X-Requests-Available-Minute");
     throw new Error(
-      `API-Football request failed: ${res.status} ${res.statusText}`,
+      `football-data.org request failed: ${res.status} ${res.statusText}` +
+        (detail ? ` — ${detail}` : "") +
+        (remaining !== null ? ` (requests left this minute: ${remaining})` : ""),
     );
   }
 
-  const body = (await res.json()) as APIResponse<APIFixture>;
+  const body = (await res.json()) as FDMatchesResponse;
 
-  if (
-    body.errors &&
-    typeof body.errors === "object" &&
-    Object.keys(body.errors as object).length > 0
-  ) {
-    throw new Error(`API-Football errors: ${JSON.stringify(body.errors)}`);
-  }
-
-  if (!Array.isArray(body.response)) {
+  if (!Array.isArray(body.matches)) {
     throw new Error(
       `Unexpected API response: ${JSON.stringify(body).slice(0, 200)}`,
     );
   }
 
-  return body.response;
+  return body.matches;
 }
 
 // ─── Post-ET score computation ──────────────────────────────────────────────────
-// post-ET = 90' + ET goals (NEVER add penalty shootout goals)
+// post-ET = 90' + ET goals (NEVER penalty shootout goals).
+// For REGULAR / EXTRA_TIME durations, score.fullTime is exactly that (no shootout
+// happened). For PENALTY_SHOOTOUT, fullTime may include shootout goals, so the
+// post-ET score is rebuilt from regularTime + extraTime.
 
-function computePostETScore(score: APIFixture["score"]): {
+function computePostETScore(score: FDScore): {
   home: number | null;
   away: number | null;
 } {
-  const ftHome = score.fulltime.home;
-  const ftAway = score.fulltime.away;
+  if (score.duration === "PENALTY_SHOOTOUT") {
+    const reg = score.regularTime;
+    if (!reg || reg.home === null || reg.away === null) {
+      return { home: null, away: null };
+    }
+    return {
+      home: reg.home + (score.extraTime?.home ?? 0),
+      away: reg.away + (score.extraTime?.away ?? 0),
+    };
+  }
 
-  if (ftHome === null || ftAway === null) return { home: null, away: null };
-
-  const etHome = score.extratime.home ?? 0;
-  const etAway = score.extratime.away ?? 0;
-
-  return {
-    home: ftHome + etHome,
-    away: ftAway + etAway,
-  };
+  return { home: score.fullTime.home, away: score.fullTime.away };
 }
 
-// ─── Advancer from penalty result ──────────────────────────────────────────────
+// ─── Advancer from final result ────────────────────────────────────────────────
 
 function computeAdvancer(
-  fixture: APIFixture,
+  match: FDMatch,
   homeCode: string | null | undefined,
   awayCode: string | null | undefined,
 ): string | null {
-  const status = fixture.fixture.status.short;
-  const postET = computePostETScore(fixture.score);
+  const postET = computePostETScore(match.score);
 
   if (postET.home === null || postET.away === null) return null;
 
@@ -182,14 +189,15 @@ function computeAdvancer(
   if (postET.home > postET.away) return homeCode ?? null;
   if (postET.away > postET.home) return awayCode ?? null;
 
-  // Draw after ET: penalty winner advances (PEN fixture status)
-  if (status === "PEN") {
-    const penHome = fixture.score.penalty.home;
-    const penAway = fixture.score.penalty.away;
-    if (penHome !== null && penAway !== null) {
-      if (penHome > penAway) return homeCode ?? null;
-      if (penAway > penHome) return awayCode ?? null;
-    }
+  // Level after ET: score.winner is authoritative (covers shootouts and awarded
+  // results); fall back to comparing the shootout score directly.
+  if (match.score.winner === "HOME_TEAM") return homeCode ?? null;
+  if (match.score.winner === "AWAY_TEAM") return awayCode ?? null;
+
+  const pen = match.score.penalties;
+  if (pen && pen.home !== null && pen.away !== null) {
+    if (pen.home > pen.away) return homeCode ?? null;
+    if (pen.away > pen.home) return awayCode ?? null;
   }
 
   return null;
@@ -212,8 +220,9 @@ Deno.serve(async (req: Request) => {
     // ── Read env vars ──────────────────────────────────────────────────────────
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const apiFootballKey = Deno.env.get("API_FOOTBALL_KEY") ?? "";
-    const apiFootballLeagueId = Deno.env.get("API_FOOTBALL_LEAGUE_ID") ?? "";
+    const footballDataToken = Deno.env.get("FOOTBALL_DATA_TOKEN") ?? "";
+    const footballDataCompetition =
+      Deno.env.get("FOOTBALL_DATA_COMPETITION") || "WC";
 
     // ── 1. Auth guard ──────────────────────────────────────────────────────────
     if (!serviceRoleKey || !authorize(req, serviceRoleKey)) {
@@ -335,42 +344,46 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // ── Env check for API Football ─────────────────────────────────────────────
-    if (!apiFootballKey || !apiFootballLeagueId) {
-      const missing = [];
-      if (!apiFootballKey) missing.push("API_FOOTBALL_KEY");
-      if (!apiFootballLeagueId) missing.push("API_FOOTBALL_LEAGUE_ID");
+    // ── Env check for football-data.org ───────────────────────────────────────
+    if (!footballDataToken) {
       return new Response(
         JSON.stringify({
-          message: `Games in window but missing env vars: ${missing.join(", ")} — skipping API call`,
+          message:
+            "Games in window but missing env vars: FOOTBALL_DATA_TOKEN — skipping API call",
           stats,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
 
-    // ── 3a. ONE API-Football call: all fixtures for league+season ─────────────
-    // Fetching the entire league+season covers live, recent, and finished fixtures
+    // ── 3a. ONE football-data.org call: all matches of the current season ─────
+    // Fetching the entire competition covers live, recent, and finished matches
     // in a single request. The frugality gate above ensures this only fires on
-    // match days. Free tier: 100 req/day.
+    // match days. Free tier: 10 req/min — one call per 10-minute tick is far below.
     stats.apiCalls++;
-    const fixtures = await fetchFixtures(
-      apiFootballLeagueId,
-      2026,
-      apiFootballKey,
-    );
+    const matches = await fetchMatches(footballDataCompetition, footballDataToken);
 
-    // Build external_id to fixture map for quick lookup
-    const fixtureMap = new Map<string, APIFixture>();
-    for (const f of fixtures) {
-      fixtureMap.set(String(f.fixture.id), f);
+    if (matches.length === 0) {
+      stats.errors.push(
+        `API returned 0 matches for competition "${footballDataCompetition}" — check FOOTBALL_DATA_COMPETITION / season availability`,
+      );
+      return new Response(
+        JSON.stringify({ message: "sync-results completed (no matches)", stats }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Build external_id to match map for quick lookup
+    const matchMap = new Map<string, FDMatch>();
+    for (const m of matches) {
+      matchMap.set(String(m.id), m);
     }
 
     // ── Fetch all games that have an external_id ───────────────────────────────
     const { data: dbGames, error: dbGamesErr } = await supabase
       .from("games")
       .select(
-        "id, external_id, kickoff, score_home, score_away, result_status, voided, updated_at",
+        "id, external_id, kickoff, score_home, score_away, result_status, voided, postponed, updated_at",
       )
       .not("external_id", "is", null);
 
@@ -392,14 +405,14 @@ Deno.serve(async (req: Request) => {
     for (const game of dbGames as GameRow[]) {
       if (!game.external_id) continue;
 
-      const fixture = fixtureMap.get(game.external_id);
-      if (!fixture) {
+      const match = matchMap.get(game.external_id);
+      if (!match) {
         stats.skipped++;
         continue;
       }
 
-      const apiStatus = fixture.fixture.status.short;
-      const apiKickoff = fixture.fixture.date;
+      const apiStatus = match.status;
+      const apiKickoff = match.utcDate;
 
       // Skip voided games entirely (admin override wins)
       if (game.voided) {
@@ -422,15 +435,20 @@ Deno.serve(async (req: Request) => {
       }
 
       if (POSTPONED_STATUSES.has(apiStatus)) {
-        updates.postponed = true;
-      } else if (updates.kickoff !== undefined) {
-        // kickoff changed but not a postponement status
+        if (!game.postponed) updates.postponed = true;
+      } else if (
+        game.postponed &&
+        (kickoffChanged ||
+          FINISHED_STATUSES.has(apiStatus) ||
+          LIVE_STATUSES.has(apiStatus))
+      ) {
+        // Rescheduled, resumed, or completed — clear the stale flag
         updates.postponed = false;
       }
 
-      // ── Finished fixtures ──────────────────────────────────────────────────
+      // ── Finished matches (incl. AWARDED technical results) ─────────────────
       if (FINISHED_STATUSES.has(apiStatus) && !isConfirmed) {
-        const postET = computePostETScore(fixture.score);
+        const postET = computePostETScore(match.score);
 
         if (postET.home !== null && postET.away !== null) {
           // Fetch team codes for advancer computation
@@ -443,7 +461,7 @@ Deno.serve(async (req: Request) => {
           const homeCode = gameTeams?.home ?? null;
           const awayCode = gameTeams?.away ?? null;
 
-          const advancer = computeAdvancer(fixture, homeCode, awayCode);
+          const advancer = computeAdvancer(match, homeCode, awayCode);
 
           updates.score_home = postET.home;
           updates.score_away = postET.away;

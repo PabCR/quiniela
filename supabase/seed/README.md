@@ -4,7 +4,7 @@
 
 | File | Purpose |
 |---|---|
-| `seed.ts` | Production seed — fetches real WC 2026 fixtures from API-Football, upserts teams/games/tournament/pool, creates Pablo's admin user. Run once locally before launch. |
+| `seed.ts` | Production seed — fetches real WC 2026 fixtures from football-data.org, upserts teams/games/tournament/pool, creates Pablo's admin user. Run once locally before launch. |
 | `seed-dev.sql` | Local dev seed — inserts deterministic relative-time fixtures covering every match-card state and pick variety. Run against local Supabase stack only. |
 
 ---
@@ -23,23 +23,22 @@
 |---|---|
 | `SUPABASE_URL` | Supabase project URL, e.g. `https://xyzcompany.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role JWT — **never expose to clients or commit to source control** |
-| `API_FOOTBALL_KEY` | API-Football `x-apisports-key` header value |
-| `API_FOOTBALL_LEAGUE_ID` | Numeric league ID for WC 2026 on API-Football (e.g. `1`) |
+| `FOOTBALL_DATA_TOKEN` | football-data.org API token (`X-Auth-Token` header) |
+| `FOOTBALL_DATA_COMPETITION` | Competition code or id (optional — defaults to `WC`, the FIFA World Cup) |
 
 ### Run
 
 ```bash
 SUPABASE_URL=https://... \
 SUPABASE_SERVICE_ROLE_KEY=eyJ... \
-API_FOOTBALL_KEY=your_key \
-API_FOOTBALL_LEAGUE_ID=1 \
+FOOTBALL_DATA_TOKEN=your_token \
 npx tsx supabase/seed/seed.ts
 ```
 
 ### What it does
 
-1. Fetches all WC 2026 fixtures from `v3.football.api-sports.io` (one request for the full season).
-2. Upserts all teams found in fixtures using a static mapping (FIFA codes, ES names, emoji flags). Unknown team names produce a loud `⚠️ UNKNOWN TEAM` warning — add them to `TEAM_MAP` in `seed.ts`.
+1. Fetches all WC 2026 matches from `api.football-data.org/v4` (one request for the full season).
+2. Upserts all teams found in matches using a static mapping (FIFA codes, ES names, emoji flags). Resolution is by the API's `tla` trigram first, then by name. Unknown teams produce a loud `⚠️ UNKNOWN TEAM` warning — add them to `TEAM_MAP` in `seed.ts`.
 3. Upserts the `World Cup 2026` tournament keyed on `external_league_id`.
 4. Upserts all games with `external_id`, stage mapping, UTC kickoff, and venue city. Knockout fixtures with TBD teams set `home`/`away` to NULL.
 5. Creates the `Quiniela Familiar` pool with `pts_full=3`, `pts_partial=1`, and a generated 6-char invite code (printed to stdout).
@@ -51,21 +50,23 @@ npx tsx supabase/seed/seed.ts
 
 ### Stage mapping
 
-API-Football round strings → DB `stage` enum:
+football-data.org stage/group enums → DB `stage` enum (no string parsing — the
+API provides real enums):
 
-| API round | DB stage |
+| API field | DB stage |
 |---|---|
-| `Group A - 1`, `Group Stage (Group A)`, … | `GROUP_A` … `GROUP_L` |
-| `Round of 32` | `R32` |
-| `Round of 16` | `R16` |
-| `Quarter-finals` | `QF` |
-| `Semi-finals` | `SF` |
-| `3rd Place Final` | `THIRD` |
-| `Final` | `FINAL` |
+| `group: GROUP_A` … `GROUP_L` | `GROUP_A` … `GROUP_L` |
+| `stage: LAST_32` | `R32` |
+| `stage: LAST_16` | `R16` |
+| `stage: QUARTER_FINALS` | `QF` |
+| `stage: SEMI_FINALS` | `SF` |
+| `stage: THIRD_PLACE` | `THIRD` |
+| `stage: FINAL` | `FINAL` |
 
-### API-Football free tier note
+### football-data.org free tier note
 
-**100 requests/day** on the free tier. This script uses **1 request** (full season fixture list). The `sync-results` Edge Function also consumes quota — plan accordingly if running both frequently on the same day.
+**10 requests/minute**, no daily cap. This script uses **1 request** (full
+season match list), so quota is a non-issue.
 
 ---
 

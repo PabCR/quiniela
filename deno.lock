@@ -1,0 +1,51 @@
+{
+  "version": "4",
+  "redirects": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2.108.1"
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.108.1": "fca0990662d240263b440bc055ea919312c0d27f7ab295e835e1644cf49200ce"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@react-native-async-storage/async-storage@2.2.0",
+        "npm:@supabase/supabase-js@^2.108.1",
+        "npm:@tailwindcss/postcss@^4.3.0",
+        "npm:@types/aes-js@^3.1.4",
+        "npm:@types/react@~19.2.2",
+        "npm:aes-js@^3.1.2",
+        "npm:eslint-config-expo@~56.0.4",
+        "npm:eslint@9",
+        "npm:expo-clipboard@~56.0.4",
+        "npm:expo-constants@~56.0.18",
+        "npm:expo-image@~56.0.11",
+        "npm:expo-linking@~56.0.14",
+        "npm:expo-localization@~56.0.6",
+        "npm:expo-router@~56.2.10",
+        "npm:expo-secure-store@~56.0.4",
+        "npm:expo-splash-screen@~56.0.10",
+        "npm:expo-status-bar@~56.0.4",
+        "npm:expo-system-ui@~56.0.5",
+        "npm:expo@~56.0.11",
+        "npm:lightningcss@1.30.1",
+        "npm:nativewind@^5.0.0-preview.4",
+        "npm:postcss@^8.5.15",
+        "npm:react-native-css@^3.0.7",
+        "npm:react-native-gesture-handler@~2.31.1",
+        "npm:react-native-get-random-values@1.11",
+        "npm:react-native-reanimated@4.3.1",
+        "npm:react-native-safe-area-context@5.7",
+        "npm:react-native-screens@4.25.2",
+        "npm:react-native-svg@15.15.4",
+        "npm:react-native-worklets@0.8.3",
+        "npm:react-native@0.85.3",
+        "npm:react@19.2.3",
+        "npm:tailwindcss@^4.3.0",
+        "npm:tsx@^4.22.4",
+        "npm:typescript@~6.0.3",
+        "npm:vitest@^4.1.8"
+      ]
+    }
+  }
+}

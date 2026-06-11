@@ -1,7 +1,7 @@
 # Quiniela — Family World Cup Prediction Pool
 
 ~16 family members predict World Cup scores. Picks lock server-side at kickoff
-and reveal to everyone after lock. Results sync from API-Football (admin can
+and reveal to everyone after lock. Results sync from football-data.org (admin can
 override or enter manually). Points compute automatically in Postgres. A
 tournament-long leaderboard ranks the family. Full ES/EN UI.
 
@@ -33,9 +33,9 @@ lib/                engine.ts (scoring/status), i18n.ts, supabase.ts, data.tsx,
 supabase/
   migrations/       schema · RLS · score_game + trigger · RPCs · realtime · cron
   tests/            pgTAP: 12 golden scoring cases + RLS negative paths
-  seed/             seed.ts (API-Football, production) · seed-dev.sql (local states)
+  seed/             seed.ts (football-data.org, production) · seed-dev.sql (local states)
   functions/
-    sync-results/   cron-driven results sync (frugal: free tier 100 req/day)
+    sync-results/   cron-driven results sync (free tier: 10 req/min)
 ```
 
 ## Local development
@@ -75,7 +75,7 @@ by clients, membership-gated visibility, and non-admin RPC rejections.
 
 1. **Supabase project** — `supabase link`, `supabase db push`, then deploy the
    sync function: `supabase functions deploy sync-results --no-verify-jwt` and
-   set secrets (`API_FOOTBALL_KEY`, `API_FOOTBALL_LEAGUE_ID`). Store
+   set secrets (`FOOTBALL_DATA_TOKEN`, optionally `FOOTBALL_DATA_COMPETITION`). Store
    `project_url` + `service_role_key` in Vault so the pg_cron job activates —
    see [`supabase/functions/sync-results/README.md`](supabase/functions/sync-results/README.md).
 2. **Auth email** — configure Resend SMTP in dashboard Auth settings and make
@@ -83,6 +83,6 @@ by clients, membership-gated visibility, and non-admin RPC rejections.
    codes, not links).
 3. **Seed fixtures** — `npx tsx supabase/seed/seed.ts` with the env vars in
    [`supabase/seed/README.md`](supabase/seed/README.md). Never hand-written:
-   fixtures come from API-Football.
+   fixtures come from football-data.org.
 4. **Builds** — `eas build --profile preview` (TestFlight internal / Play
    internal). Bundle ids: `com.pablo.quiniela`.

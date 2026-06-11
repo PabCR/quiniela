@@ -7,8 +7,8 @@
  * Required environment variables:
  *   SUPABASE_URL              — e.g. https://xyzcompany.supabase.co
  *   SUPABASE_SERVICE_ROLE_KEY — service role JWT (never expose to clients)
- *   API_FOOTBALL_KEY          — x-apisports-key header value
- *   API_FOOTBALL_LEAGUE_ID    — numeric league ID for WC 2026 (e.g. 1)
+ *   FOOTBALL_DATA_TOKEN       — football-data.org API token (X-Auth-Token header)
+ *   FOOTBALL_DATA_COMPETITION — competition code or id (optional, default "WC")
  *
  * Runtime: Node via `npx tsx supabase/seed/seed.ts`
  * Idempotent: safe to re-run (upserts keyed on external_id / unique keys).
@@ -20,17 +20,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
-const API_FOOTBALL_LEAGUE_ID = process.env.API_FOOTBALL_LEAGUE_ID;
+const FOOTBALL_DATA_TOKEN = process.env.FOOTBALL_DATA_TOKEN;
+const FOOTBALL_DATA_COMPETITION = process.env.FOOTBALL_DATA_COMPETITION || "WC";
 
-if (
-  !SUPABASE_URL ||
-  !SUPABASE_SERVICE_ROLE_KEY ||
-  !API_FOOTBALL_KEY ||
-  !API_FOOTBALL_LEAGUE_ID
-) {
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FOOTBALL_DATA_TOKEN) {
   console.error(
-    "❌  Missing required env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, API_FOOTBALL_KEY, API_FOOTBALL_LEAGUE_ID"
+    "❌  Missing required env vars: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, FOOTBALL_DATA_TOKEN"
   );
   process.exit(1);
 }
@@ -40,8 +35,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // ─── static team mapping ─────────────────────────────────────────────────────
-// Keys are the team names as returned by API-Football.
-// ~60 plausible WC 2026 qualifiers. Add more as draw is finalised.
+// Primary lookup is by FIFA code (football-data.org's `tla` field); the name
+// keys are a fallback for any tla mismatch. ~60 plausible WC 2026 qualifiers.
+// Add more as the draw is finalised.
 
 interface TeamDef {
   code: string; // FIFA 3-letter
@@ -125,6 +121,11 @@ const TEAM_MAP: Record<string, TeamDef> = {
   "New Zealand":   { code: "NZL", name_en: "New Zealand",    name_es: "Nueva Zelanda",  flag: "🇳🇿" },
 };
 
+// Index by FIFA code for tla-based lookup
+const TEAM_BY_CODE = new Map<string, TeamDef>(
+  Object.values(TEAM_MAP).map((t) => [t.code, t])
+);
+
 // ─── stage mapping ────────────────────────────────────────────────────────────
 
 type StageEnum =
@@ -133,73 +134,53 @@ type StageEnum =
   | "R32" | "R16" | "QF" | "SF" | "THIRD" | "FINAL";
 
 /**
- * Maps API-Football round strings to our stage enum.
- * Group rounds look like "Group Stage - 1", "Group Stage - 2", etc.
- * The group letter comes from the standings "group" field on each fixture.
+ * Maps football-data.org stage/group enums to our stage enum.
+ * Group-stage matches carry the group directly as "GROUP_A".."GROUP_L";
+ * knockout stages use the stage enum (LAST_32, LAST_16, ...).
  */
-function mapRound(round: string, group?: string): StageEnum {
-  const r = round.toLowerCase();
-
-  // Group stage — derive letter from the group field (e.g. "Group A")
-  if (r.includes("group")) {
-    if (group) {
-      const m = group.match(/group\s+([a-l])/i);
-      if (m) {
-        return `GROUP_${m[1].toUpperCase()}` as StageEnum;
-      }
-    }
-    // Fallback: extract letter from round string itself
-    const m2 = round.match(/group\s+([a-l])/i);
-    if (m2) return `GROUP_${m2[1].toUpperCase()}` as StageEnum;
-    return "GROUP_A"; // last resort — will log warning below
+function mapStage(stage: string, group: string | null): StageEnum {
+  if (group) {
+    if (/^GROUP_[A-L]$/.test(group)) return group as StageEnum;
+    console.warn(`⚠️  Unrecognized group "${group}" — falling through to stage "${stage}"`);
   }
 
-  if (r.includes("round of 32")) return "R32";
-  if (r.includes("round of 16") || r.includes("1/8")) return "R16";
-  if (r.includes("quarter") || r.includes("1/4")) return "QF";
-  if (r.includes("semi") || r.includes("1/2")) return "SF";
-  if (r.includes("third") || r.includes("3rd") || (r.includes("place") && r.includes("3"))) return "THIRD";
-  if (r.includes("final")) return "FINAL";
+  switch (stage) {
+    case "LAST_32": return "R32";
+    case "LAST_16": return "R16";
+    case "QUARTER_FINALS": return "QF";
+    case "SEMI_FINALS": return "SF";
+    case "THIRD_PLACE": return "THIRD";
+    case "FINAL": return "FINAL";
+  }
 
-  console.warn(`⚠️  Unknown round: "${round}" — defaulting to GROUP_A`);
+  console.warn(`⚠️  Unknown stage: "${stage}" (group=${group}) — defaulting to GROUP_A`);
   return "GROUP_A";
 }
 
-// ─── API-Football types ───────────────────────────────────────────────────────
+// ─── football-data.org v4 types ───────────────────────────────────────────────
 
-interface APIFixtureTeam {
+interface FDTeam {
+  id: number | null; // null for undetermined knockout slots
+  name: string | null;
+  shortName: string | null;
+  tla: string | null;
+  crest?: string | null;
+}
+
+interface FDMatch {
   id: number;
-  name: string;
-  logo: string;
+  utcDate: string; // ISO 8601 UTC
+  status: string;
+  stage: string;
+  group: string | null;
+  venue?: string | null;
+  homeTeam: FDTeam;
+  awayTeam: FDTeam;
 }
 
-interface APIFixture {
-  fixture: {
-    id: number;
-    date: string; // ISO 8601 UTC
-    venue: { city: string | null };
-    status: { short: string };
-  };
-  league: {
-    id: number;
-    round: string;
-    season: number;
-  };
-  teams: {
-    home: APIFixtureTeam;
-    away: APIFixtureTeam;
-  };
-  score: {
-    fulltime: { home: number | null; away: number | null };
-    extratime: { home: number | null; away: number | null };
-    penalty: { home: number | null; away: number | null };
-  };
-}
-
-interface APIResponse<T> {
-  results: number;
-  response: T[];
-  errors?: unknown;
+interface FDMatchesResponse {
+  resultSet?: { count: number };
+  matches: FDMatch[];
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -213,49 +194,62 @@ function generateInviteCode(): string {
   return code;
 }
 
-function resolveTeam(apiName: string): TeamDef {
-  const def = TEAM_MAP[apiName];
-  if (def) return def;
-
-  // Derive fallback code from first 3 letters, uppercased
-  const code = apiName.replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() || "UNK";
-  console.warn(
-    `⚠️  UNKNOWN TEAM: "${apiName}" — using derived code "${code}". Add to TEAM_MAP for proper ES name / flag.`
-  );
-  return { code, name_en: apiName, name_es: apiName, flag: "🏳️" };
+function isTBD(team: FDTeam | null | undefined): boolean {
+  return !team || team.id === null || !team.name;
 }
 
-async function fetchFixtures(
-  leagueId: string,
-  season: number,
-  apiKey: string
-): Promise<APIFixture[]> {
-  const url = `https://v3.football.api-sports.io/fixtures?league=${leagueId}&season=${season}`;
-  console.log(`Fetching fixtures from: ${url}`);
+function resolveTeam(team: FDTeam): TeamDef {
+  // tla is football-data.org's FIFA-style trigram — primary key into our map
+  if (team.tla) {
+    const byCode = TEAM_BY_CODE.get(team.tla);
+    if (byCode) return byCode;
+  }
+  if (team.name && TEAM_MAP[team.name]) return TEAM_MAP[team.name];
+
+  const code =
+    team.tla ??
+    ((team.name ?? "").replace(/[^a-zA-Z]/g, "").slice(0, 3).toUpperCase() || "UNK");
+  console.warn(
+    `⚠️  UNKNOWN TEAM: "${team.name}" (tla=${team.tla}) — using code "${code}". Add to TEAM_MAP for proper ES name / flag.`
+  );
+  return { code, name_en: team.name ?? code, name_es: team.name ?? code, flag: "🏳️" };
+}
+
+async function fetchMatches(
+  competition: string,
+  apiToken: string
+): Promise<FDMatch[]> {
+  // No season filter: defaults to the competition's current season.
+  const url = `https://api.football-data.org/v4/competitions/${competition}/matches`;
+  console.log(`Fetching matches from: ${url}`);
 
   const res = await fetch(url, {
-    headers: {
-      "x-apisports-key": apiKey,
-      "Content-Type": "application/json",
-    },
+    headers: { "X-Auth-Token": apiToken },
   });
 
   if (!res.ok) {
-    throw new Error(`API-Football request failed: ${res.status} ${res.statusText}`);
+    let detail = "";
+    try {
+      const errBody = (await res.json()) as { message?: string; error?: string };
+      detail = errBody.message ?? errBody.error ?? "";
+    } catch {
+      // non-JSON error body
+    }
+    throw new Error(
+      `football-data.org request failed: ${res.status} ${res.statusText}${detail ? ` — ${detail}` : ""}`
+    );
   }
 
-  const body = (await res.json()) as APIResponse<APIFixture>;
+  const body = (await res.json()) as FDMatchesResponse;
 
-  if (body.errors && typeof body.errors === "object" && Object.keys(body.errors as object).length > 0) {
-    throw new Error(`API-Football errors: ${JSON.stringify(body.errors)}`);
+  if (!Array.isArray(body.matches)) {
+    throw new Error(
+      `Unexpected API response shape: ${JSON.stringify(body).slice(0, 200)}`
+    );
   }
 
-  if (!Array.isArray(body.response)) {
-    throw new Error(`Unexpected API response shape: ${JSON.stringify(body).slice(0, 200)}`);
-  }
-
-  console.log(`Fetched ${body.results} fixtures.`);
-  return body.response;
+  console.log(`Fetched ${body.matches.length} matches.`);
+  return body.matches;
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
@@ -263,23 +257,22 @@ async function fetchFixtures(
 async function main() {
   console.log("=== Quiniela seed script ===\n");
 
-  // 1. Fetch fixtures
-  const fixtures = await fetchFixtures(
-    API_FOOTBALL_LEAGUE_ID!,
-    2026,
-    API_FOOTBALL_KEY!
+  // 1. Fetch matches
+  const matches = await fetchMatches(
+    FOOTBALL_DATA_COMPETITION,
+    FOOTBALL_DATA_TOKEN!
   );
 
-  if (fixtures.length === 0) {
-    throw new Error("No fixtures returned. Check league ID and season.");
+  if (matches.length === 0) {
+    throw new Error("No matches returned. Check competition code and season.");
   }
 
-  // 2. Collect all unique teams from fixtures
+  // 2. Collect all unique teams from matches
   const teamsFromAPI = new Map<string, TeamDef>();
-  for (const f of fixtures) {
-    for (const side of [f.teams.home, f.teams.away]) {
-      if (side && side.name && !side.name.toLowerCase().includes("tbd")) {
-        const def = resolveTeam(side.name);
+  for (const m of matches) {
+    for (const side of [m.homeTeam, m.awayTeam]) {
+      if (!isTBD(side)) {
+        const def = resolveTeam(side);
         teamsFromAPI.set(def.code, def);
       }
     }
@@ -313,7 +306,7 @@ async function main() {
   const { data: existingTournament } = await supabase
     .from("tournaments")
     .select("id")
-    .eq("external_league_id", API_FOOTBALL_LEAGUE_ID!)
+    .eq("external_league_id", FOOTBALL_DATA_COMPETITION)
     .maybeSingle();
 
   let tournamentId: number;
@@ -325,7 +318,7 @@ async function main() {
       .from("tournaments")
       .insert({
         name: "World Cup 2026",
-        external_league_id: API_FOOTBALL_LEAGUE_ID!,
+        external_league_id: FOOTBALL_DATA_COMPETITION,
       })
       .select("id")
       .single();
@@ -340,28 +333,15 @@ async function main() {
   // 5. Upsert games
   console.log("Upserting games...");
 
-  // Determine the group for each fixture via the round string.
-  // API-Football includes the group in the league.round for some competitions;
-  // otherwise we parse from the round name or fall back to standings endpoint.
-  // For WC 2026 the round typically looks like "Group Stage - 1" with the
-  // group in the league.groups or standings. We do a best-effort parse.
+  const gameRows = matches.map((m) => {
+    const externalId = String(m.id);
+    const stage = mapStage(m.stage, m.group);
 
-  const gameRows = fixtures.map((f) => {
-    const externalId = String(f.fixture.id);
-    const round = f.league.round ?? "";
-    // The API sometimes includes the group letter in the round: "Group A - 1"
-    const stage = mapRound(round);
+    const homeCode = isTBD(m.homeTeam) ? null : resolveTeam(m.homeTeam).code;
+    const awayCode = isTBD(m.awayTeam) ? null : resolveTeam(m.awayTeam).code;
 
-    const homeName = f.teams.home?.name ?? "";
-    const awayName = f.teams.away?.name ?? "";
-    const homeTBD = homeName.toLowerCase().includes("tbd") || !homeName;
-    const awayTBD = awayName.toLowerCase().includes("tbd") || !awayName;
-
-    const homeCode = homeTBD ? null : resolveTeam(homeName).code;
-    const awayCode = awayTBD ? null : resolveTeam(awayName).code;
-
-    const kickoff = f.fixture.date; // already ISO 8601 UTC
-    const location = f.fixture.venue?.city ?? null;
+    const kickoff = m.utcDate; // already ISO 8601 UTC
+    const location = m.venue ?? null;
 
     return {
       tournament_id: tournamentId,
