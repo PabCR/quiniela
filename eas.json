@@ -11,11 +11,19 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dctjihgmpcqbbigjetkk.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_hp-foxCr15ibq02ConSjRQ_Vj-N_0ZJ"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://dctjihgmpcqbbigjetkk.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_hp-foxCr15ibq02ConSjRQ_Vj-N_0ZJ"
+      }
     }
   },
   "submit": {
