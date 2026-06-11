@@ -243,6 +243,15 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
+# Customize the magic-link / OTP email so it delivers the 6-digit code.
+# signInWithOtp + verifyOtp({ type: 'email' }) shares the magic_link template;
+# including {{ .Token }} (in supabase/templates/magic_link.html) makes the email
+# carry the code the native app expects. detectSessionInUrl is false client-side,
+# so no clickable link is needed.
+[auth.email.template.magic_link]
+subject = "Tu código Quiniela · Your Quiniela code"
+content_path = "./supabase/templates/magic_link.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

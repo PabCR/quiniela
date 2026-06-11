@@ -32,6 +32,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# local agent settings
+.claude/
+
 # env
 .env
 .env.*
