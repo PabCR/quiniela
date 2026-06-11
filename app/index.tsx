@@ -20,6 +20,7 @@ import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 
 import { useSession } from '../lib/providers';
+import { COLOR_ACCENT } from '../components/constants';
 
 export default function Index() {
   const { session, membership, loading } = useSession();
@@ -27,7 +28,7 @@ export default function Index() {
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-bg">
-        <ActivityIndicator color="#12181f" />
+        <ActivityIndicator color={COLOR_ACCENT} />
       </View>
     );
   }

@@ -33,7 +33,7 @@ import {
 } from '../../lib/onboarding';
 import { supabase } from '../../lib/supabase';
 // The 22 avatar emojis from prototype/app/data.js (Q_EMOJIS), canonical set.
-import { Q_EMOJIS } from '../../components/constants';
+import { Q_EMOJIS, COLOR_TEXT_DISABLED } from '../../components/constants';
 
 interface PgError {
   code?: string;
@@ -136,7 +136,7 @@ export default function ProfileScreen() {
         returnKeyType="done"
         maxLength={40}
         placeholder={t('profileNamePlaceholder')}
-        placeholderTextColor="#989fa7"
+        placeholderTextColor={COLOR_TEXT_DISABLED}
         accessibilityLabel={t('profileNameLabel')}
         className="rounded-md border border-border bg-surface px-4 text-text"
         style={{ height: 56, fontSize: 17 }}

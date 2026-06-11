@@ -19,6 +19,7 @@ import {
 } from './_components';
 import { useT } from '../../lib/providers';
 import { supabase } from '../../lib/supabase';
+import { COLOR_TEXT_DISABLED } from '../../components/constants';
 
 // Pragmatic email shape check — server is the real validator.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -75,7 +76,7 @@ export default function EmailScreen() {
         autoFocus
         returnKeyType="go"
         placeholder={t('emailPlaceholder')}
-        placeholderTextColor="#989fa7"
+        placeholderTextColor={COLOR_TEXT_DISABLED}
         accessibilityLabel={t('emailLabel')}
         className="rounded-md border border-border bg-surface px-4 text-text"
         style={{ height: 56, fontSize: 17 }}

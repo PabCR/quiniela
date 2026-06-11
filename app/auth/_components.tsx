@@ -27,6 +27,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLang } from '../../lib/providers';
 import { SHADOW_CARD, TAP_TARGET } from '../../lib/theme';
 import type { Lang } from '../../lib/types';
+import { COLOR_ON_ACCENT } from '../../components/constants';
 
 /* ---- ES/EN segmented toggle (top-right of every auth screen) ---- */
 
@@ -159,7 +160,7 @@ export function CtaButton({
       className="min-h-[52px] w-full flex-row items-center justify-center rounded-pill bg-accent px-4"
     >
       {loading ? (
-        <ActivityIndicator color="#ffffff" />
+        <ActivityIndicator color={COLOR_ON_ACCENT} />
       ) : (
         <Text className="text-on-accent" style={{ fontSize: 17, fontWeight: '600' }}>
           {label}

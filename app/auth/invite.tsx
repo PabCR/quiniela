@@ -28,6 +28,7 @@ import { useT } from '../../lib/providers';
 import { normalizeInviteCode, setPendingInviteCode } from '../../lib/onboarding';
 import { supabase } from '../../lib/supabase';
 import { DURATION_FAST } from '../../lib/theme';
+import { COLOR_TEXT_DISABLED } from '../../components/constants';
 
 export default function InviteScreen() {
   const t = useT();
@@ -106,7 +107,7 @@ export default function InviteScreen() {
           maxLength={12}
           returnKeyType="go"
           placeholder={t('inviteCodePlaceholder')}
-          placeholderTextColor="#989fa7"
+          placeholderTextColor={COLOR_TEXT_DISABLED}
           accessibilityLabel={t('inviteCodeLabel')}
           className="rounded-md border border-border bg-surface text-text"
           style={{

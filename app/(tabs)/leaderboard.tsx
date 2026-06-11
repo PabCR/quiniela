@@ -26,13 +26,11 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar, Chip, EmptyState, ScreenHeader } from '../../components';
-import {
-  COLOR_EXACT,
+import { COLOR_EXACT,
   COLOR_LIVE,
   COLOR_ON_ACCENT,
   COLOR_TEXT_DISABLED,
-  TABULAR,
-} from '../../components/constants';
+  TABULAR, COLOR_ACCENT } from '../../components/constants';
 import { SHADOW_CARD, SHADOW_FLOAT } from '../../lib/theme';
 import { standingsWithMovement, statusOf } from '../../lib/engine';
 import { useGames, useMembers, usePool, usePoolData } from '../../lib/data';
@@ -75,7 +73,7 @@ function LeaderboardRow({
         SHADOW_CARD,
         isMe && {
           outlineWidth: 2,
-          outlineColor: '#12181f', // --color-accent
+          outlineColor: COLOR_ACCENT,
         } as never,
         {
           paddingHorizontal: isTop ? 14 : 14,
@@ -189,7 +187,7 @@ function FloatingMeRow({
         {
           bottom: bottomInset + 8, // 8px gap above tab bar edge
           borderWidth: 2,
-          borderColor: '#12181f', // --color-accent
+          borderColor: COLOR_ACCENT,
           paddingHorizontal: 14,
           paddingVertical: isTop ? 14 : 10,
           minHeight: 56,
