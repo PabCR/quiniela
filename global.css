@@ -3,3 +3,212 @@
 @import "tailwindcss/utilities.css";
 
 @import "nativewind/theme";
+
+/* ==========================================================================
+   QUINIELA — Design Tokens (NativeWind v5 / Tailwind CSS v4)
+   --------------------------------------------------------------------------
+   Token source: design_handoff_quiniela/prototype/tokens.css (translated
+   token-for-token). All values live here; no hardcoded colors in components.
+
+   OKLCH support: react-native-css-interop (NativeWind v5 / react-native-css)
+   compiles oklch() values to sRGB at build time — confirmed by NativeWind v5
+   official docs showing oklch in @theme examples. Values are kept in oklch for
+   human-readability; sRGB hex equivalents are in comments for reference.
+
+   Box-shadow: NativeWind v5 supports the named shadow utilities (shadow-sm …
+   shadow-2xl). Multi-layer box-shadow strings are NOT reliably mapped to
+   native shadow properties; @utility definitions below use a single-layer
+   rgba value. Full-fidelity fallbacks (iOS shadowColor/shadowOffset etc. +
+   Android elevation) are in lib/theme.ts.
+
+   font-variant-numeric / tabular-nums: web-only in NativeWind v5 (confirmed
+   in docs). The .tabular-nums utility class exists but is a no-op on native.
+   Use fontVariant: ['tabular-nums'] via the TABULAR_NUMS const in
+   lib/theme.ts for all score/points displays.
+
+   font-weight 650: React Native does not support fractional font weights.
+   --text-heading uses weight 700 (nearest bold step above 600) to preserve
+   visual hierarchy over body text. Documented in lib/theme.ts.
+   ========================================================================== */
+
+@theme {
+
+  /* -----------------------------------------------------------------------
+     PRIMITIVES — raw OKLCH values (not used directly in components)
+     sRGB hex equivalents computed with OKLab math for reference:
+     slate-0:#fbfcfd  slate-25:#f5f7f9  slate-50:#eff3f6  slate-100:#e7ecf0
+     slate-200:#dbe0e6  slate-300:#c6cdd4  slate-400:#989fa7  slate-500:#6a7179
+     slate-600:#4d555e  slate-700:#333b45  slate-800:#1f262f  slate-900:#12181f
+     green-ink:#0a693c  green-soft:#d1f1db
+     amber-ink:#875800  amber-soft:#fbe9c6
+     red-ink:#ac3031    red-soft:#ffe3df
+  ----------------------------------------------------------------------- */
+
+  --color-q-slate-0:   oklch(0.99 0.002 250);   /* #fbfcfd */
+  --color-q-slate-25:  oklch(0.975 0.004 250);  /* #f5f7f9 */
+  --color-q-slate-50:  oklch(0.962 0.006 250);  /* #eff3f6 */
+  --color-q-slate-100: oklch(0.94 0.008 250);   /* #e7ecf0 */
+  --color-q-slate-200: oklch(0.905 0.01 250);   /* #dbe0e6 */
+  --color-q-slate-300: oklch(0.845 0.012 250);  /* #c6cdd4 */
+  --color-q-slate-400: oklch(0.70 0.014 252);   /* #989fa7 */
+  --color-q-slate-500: oklch(0.545 0.016 252);  /* #6a7179 */
+  --color-q-slate-600: oklch(0.445 0.018 254);  /* #4d555e */
+  --color-q-slate-700: oklch(0.35 0.02 254);    /* #333b45 */
+  --color-q-slate-800: oklch(0.265 0.02 256);   /* #1f262f */
+  --color-q-slate-900: oklch(0.205 0.018 256);  /* #12181f */
+
+  --color-q-green-ink:  oklch(0.46 0.11 155);   /* #0a693c */
+  --color-q-green-soft: oklch(0.93 0.045 155);  /* #d1f1db */
+  --color-q-amber-ink:  oklch(0.50 0.11 75);    /* #875800 */
+  --color-q-amber-soft: oklch(0.94 0.05 85);    /* #fbe9c6 */
+  --color-q-red-ink:    oklch(0.50 0.16 25);    /* #ac3031 */
+  --color-q-red-soft:   oklch(0.94 0.035 25);   /* #ffe3df */
+
+  /* -----------------------------------------------------------------------
+     COLOR ALIASES — what components actually use
+     Components must ONLY reference these, never the primitives above.
+  ----------------------------------------------------------------------- */
+
+  /* Surfaces */
+  --color-bg:            oklch(0.975 0.004 250);  /* q-slate-25  #f5f7f9 */
+  --color-surface:       #ffffff;
+  --color-surface-2:     oklch(0.962 0.006 250);  /* q-slate-50  #eff3f6 */
+  --color-surface-3:     oklch(0.94 0.008 250);   /* q-slate-100 #e7ecf0 */
+  --color-border:        oklch(0.905 0.01 250);   /* q-slate-200 #dbe0e6 */
+  --color-border-strong: oklch(0.845 0.012 250);  /* q-slate-300 #c6cdd4 */
+
+  /* Text */
+  --color-text:          oklch(0.205 0.018 256);  /* q-slate-900 #12181f */
+  --color-text-2:        oklch(0.445 0.018 254);  /* q-slate-600 #4d555e */
+  --color-text-3:        oklch(0.545 0.016 252);  /* q-slate-500 #6a7179 */
+  --color-text-disabled: oklch(0.70 0.014 252);   /* q-slate-400 #989fa7 */
+
+  /* Accent (interactive — ink; swappable to any brand hue later) */
+  --color-accent:        oklch(0.205 0.018 256);  /* q-slate-900 #12181f */
+  --color-accent-hover:  oklch(0.265 0.02 256);   /* q-slate-800 #1f262f */
+  --color-on-accent:     #ffffff;
+  --color-accent-soft:   oklch(0.94 0.008 250);   /* q-slate-100 #e7ecf0 */
+
+  /* Semantic — pick outcomes & match states */
+  --color-exact:         oklch(0.46 0.11 155);   /* q-green-ink  #0a693c */
+  --color-exact-soft:    oklch(0.93 0.045 155);  /* q-green-soft #d1f1db */
+  --color-partial:       oklch(0.50 0.11 75);    /* q-amber-ink  #875800 */
+  --color-partial-soft:  oklch(0.94 0.05 85);    /* q-amber-soft #fbe9c6 */
+  --color-miss:          oklch(0.545 0.016 252); /* q-slate-500  #6a7179 */
+  --color-miss-soft:     oklch(0.94 0.008 250);  /* q-slate-100  #e7ecf0 */
+  --color-locked:        oklch(0.445 0.018 254); /* q-slate-600  #4d555e */
+  --color-locked-soft:   oklch(0.94 0.008 250);  /* q-slate-100  #e7ecf0 */
+  --color-void:          oklch(0.70 0.014 252);  /* q-slate-400  #989fa7 */
+  --color-void-soft:     oklch(0.962 0.006 250); /* q-slate-50   #eff3f6 */
+  --color-live:          oklch(0.50 0.16 25);    /* q-red-ink    #ac3031 */
+  --color-live-soft:     oklch(0.94 0.035 25);   /* q-red-soft   #ffe3df */
+  --color-urgent:        oklch(0.50 0.16 25);    /* q-red-ink    #ac3031 */
+  --color-urgent-soft:   oklch(0.94 0.035 25);   /* q-red-soft   #ffe3df */
+  --color-saved:         oklch(0.46 0.11 155);   /* q-green-ink  #0a693c */
+
+  /* -----------------------------------------------------------------------
+     TYPE SCALE
+     Tailwind v4 text tokens: --text-{name} sets font-size; companion tokens
+     --text-{name}--line-height and --text-{name}--font-weight control those
+     properties when the text-{name} utility is applied.
+
+     font-weight 650: React Native only accepts numeric weights that map to
+     a loaded font variant (100–900). 650 is not a valid value. We use 700
+     (bold) for --text-heading to maintain visual hierarchy above body (400)
+     and label (600). Components needing the subtle distinction can apply
+     font-semibold explicitly, noting the prototype intent was mid-bold.
+  ----------------------------------------------------------------------- */
+
+  /* display: 40px / 1.05 / 700 — hero scores */
+  --text-display: 2.5rem;
+  --text-display--line-height: 1.05;
+  --text-display--font-weight: 700;
+
+  /* score: 28px / 1.1 / 700 — card scores (30px on cards via inline override) */
+  --text-score: 1.75rem;
+  --text-score--line-height: 1.1;
+  --text-score--font-weight: 700;
+
+  /* title: 22px / 1.2 / 700 — screen titles */
+  --text-title: 1.375rem;
+  --text-title--line-height: 1.2;
+  --text-title--font-weight: 700;
+
+  /* heading: 17px / 1.3 / 700 — team names, list rows
+     (prototype weight 650 → 700; see note above) */
+  --text-heading: 1.0625rem;
+  --text-heading--line-height: 1.3;
+  --text-heading--font-weight: 700;
+
+  /* body: 16px / 1.5 / 400 — minimum body */
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-body--font-weight: 400;
+
+  /* label: 13px / 1.25 / 600 — chips, meta */
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.25;
+  --text-label--font-weight: 600;
+
+  /* caption: 12px / 1.3 / 500 — fine print only */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.3;
+  --text-caption--font-weight: 500;
+
+  /* -----------------------------------------------------------------------
+     LETTER SPACING
+  ----------------------------------------------------------------------- */
+  --tracking-caps: 0.06em;
+
+  /* -----------------------------------------------------------------------
+     RADII
+     Tailwind v4 re-defines --radius-* so we override with project values.
+  ----------------------------------------------------------------------- */
+  --radius-sm:   10px;   /* chips, tags */
+  --radius-md:   16px;   /* inputs, capsules */
+  --radius-lg:   22px;   /* cards */
+  --radius-xl:   28px;   /* sheets, hero tiles */
+  --radius-pill: 999px;
+
+  /* -----------------------------------------------------------------------
+     ELEVATION (Android shadow scale — used via elevation-* utilities)
+     Kept alongside the custom @utility shadow helpers below.
+  ----------------------------------------------------------------------- */
+  --elevation-card:  2;
+  --elevation-float: 8;
+
+  /* -----------------------------------------------------------------------
+     SPACING
+     Tailwind v4 default 4px grid (--spacing: 0.25rem) already covers the
+     tokens.css space-1..8 values (4px → space-1, 8px → space-2 … 40px →
+     space-8). No extra tokens needed; use Tailwind's p-1 … p-10 utilities.
+  ----------------------------------------------------------------------- */
+}
+
+/* -------------------------------------------------------------------------
+   SHADOW UTILITIES
+   Multi-layer box-shadow strings are not reliably compiled to native shadow
+   properties by react-native-css-interop. Each utility below uses a single
+   representative layer in rgba (derived from shadow base oklch(0.2 0.02 256)
+   = rgb(16,22,31)). iOS-accurate and Android elevation fallbacks are in
+   lib/theme.ts → SHADOW_CARD / SHADOW_FLOAT style objects.
+------------------------------------------------------------------------- */
+
+@utility shadow-card {
+  box-shadow: 0 4px 16px rgba(16, 22, 31, 0.08);
+}
+
+@utility shadow-float {
+  box-shadow: 0 12px 32px rgba(16, 22, 31, 0.12);
+}
+
+/* -------------------------------------------------------------------------
+   TABULAR UTILITY
+   font-variant-numeric: tabular-nums is web-only in NativeWind v5.
+   The class below compiles correctly for web. On native, consume
+   lib/theme.ts → TABULAR_NUMS instead (fontVariant: ['tabular-nums']).
+------------------------------------------------------------------------- */
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
