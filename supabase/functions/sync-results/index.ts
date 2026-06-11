@@ -8,9 +8,11 @@
  * ─── Required environment variables ─────────────────────────────────────────────
  *   FOOTBALL_DATA_TOKEN       — X-Auth-Token header value (football-data.org API token)
  *   FOOTBALL_DATA_COMPETITION — competition code or id (default "WC" = FIFA World Cup)
+ *   CRON_SECRET               — shared bearer the cron caller sends (same value is
+ *                               stored in Vault as `service_role_key`); falls back to
+ *                               SUPABASE_SERVICE_ROLE_KEY when unset (local stack)
  *   SUPABASE_URL              — project URL (auto-injected by Supabase runtime)
- *   SUPABASE_SERVICE_ROLE_KEY — service-role JWT (auto-injected; also used as auth
- *                               bearer by the cron caller to protect this endpoint)
+ *   SUPABASE_SERVICE_ROLE_KEY — service-role key (auto-injected; DB access)
  *
  * ─── Deploy command ──────────────────────────────────────────────────────────────
  *   supabase functions deploy sync-results --no-verify-jwt
@@ -101,10 +103,10 @@ const LIVE_STATUSES = new Set(["IN_PLAY", "PAUSED", "SUSPENDED"]);
 
 // ─── Auth guard ────────────────────────────────────────────────────────────────
 
-function authorize(req: Request, serviceRoleKey: string): boolean {
+function authorize(req: Request, expectedBearer: string): boolean {
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  return token === serviceRoleKey;
+  return token === expectedBearer;
 }
 
 // ─── football-data.org fetch ────────────────────────────────────────────────────
@@ -223,9 +225,12 @@ Deno.serve(async (req: Request) => {
     const footballDataToken = Deno.env.get("FOOTBALL_DATA_TOKEN") ?? "";
     const footballDataCompetition =
       Deno.env.get("FOOTBALL_DATA_COMPETITION") || "WC";
+    // Dedicated shared secret for the cron caller; the service role key works as
+    // a fallback so the local stack needs no extra setup.
+    const cronSecret = Deno.env.get("CRON_SECRET") || serviceRoleKey;
 
     // ── 1. Auth guard ──────────────────────────────────────────────────────────
-    if (!serviceRoleKey || !authorize(req, serviceRoleKey)) {
+    if (!cronSecret || !authorize(req, cronSecret)) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { "Content-Type": "application/json" },

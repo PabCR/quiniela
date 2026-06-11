@@ -12,16 +12,25 @@ kicked off.
 | Variable | Where set | Purpose |
 |---|---|---|
 | `SUPABASE_URL` | Auto-injected by runtime | Project API URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Auto-injected by runtime | Bypasses RLS; also used as the auth bearer the cron caller sends |
+| `SUPABASE_SERVICE_ROLE_KEY` | Auto-injected by runtime | Bypasses RLS (DB access); auth-bearer fallback on the local stack |
+| `CRON_SECRET` | Supabase Function secrets | Dedicated bearer the cron caller sends (`openssl rand -hex 32`); the same value is stored in Vault under the name `service_role_key` |
 | `FOOTBALL_DATA_TOKEN` | Supabase Function secrets | football-data.org API token (`X-Auth-Token` header) |
 | `FOOTBALL_DATA_COMPETITION` | Supabase Function secrets | Competition code or id (optional — defaults to `WC`, the FIFA World Cup) |
 
 ### Setting secrets (remote)
 
 ```bash
+supabase secrets set CRON_SECRET=$(openssl rand -hex 32)   # keep a copy for Vault below
 supabase secrets set FOOTBALL_DATA_TOKEN=your_token_here
 supabase secrets set FOOTBALL_DATA_COMPETITION=WC
 ```
+
+Why a dedicated `CRON_SECRET`: on new-generation Supabase projects the
+auto-injected `SUPABASE_SERVICE_ROLE_KEY` doesn't match the dashboard's legacy
+service-role JWT, and `sb_secret_…` keys sent as a bearer are intercepted by
+the functions gateway — so the cron caller and the function share a minted
+secret instead. On the local stack `CRON_SECRET` is unset and the function
+falls back to comparing against the local service role key.
 
 `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are auto-injected — do not set
 them manually.
@@ -57,15 +66,19 @@ select vault.create_secret(
   'project_url'
 );
 
--- Store the service role key
+-- Store the cron bearer. The Vault name 'service_role_key' is what migration
+-- 0009 looks up — the VALUE is the minted CRON_SECRET, not the platform key.
 select vault.create_secret(
-  '<your-service-role-jwt>',
+  '<your-CRON_SECRET-value>',
   'service_role_key'
 );
 ```
 
 The cron migration (`0009_cron_sync.sql`) will no-op on the local stack and on
-any remote project where these secrets have not yet been set.
+any remote project where these secrets have not yet been set. **If `db push`
+ran before the Vault secrets existed, the cron job was never scheduled** — re-run
+the body of `0009_cron_sync.sql` in the SQL Editor after creating the secrets
+(it is idempotent), then verify with the `cron.job` query below.
 
 ---
 
@@ -104,10 +117,10 @@ curl -i -X POST \
   -H "Content-Type: application/json" \
   -d '{}'
 
-# Remote (replace <ref> and <service-role-key>)
+# Remote (replace <ref> and <CRON_SECRET>)
 curl -i -X POST \
   "https://<ref>.supabase.co/functions/v1/sync-results" \
-  -H "Authorization: Bearer <service-role-key>" \
+  -H "Authorization: Bearer <CRON_SECRET>" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

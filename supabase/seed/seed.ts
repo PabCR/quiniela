@@ -97,6 +97,8 @@ const TEAM_MAP: Record<string, TeamDef> = {
   Bosnia:          { code: "BIH", name_en: "Bosnia & Herzegovina", name_es: "Bosnia y Herzegovina", flag: "🇧🇦" },
   Georgia:         { code: "GEO", name_en: "Georgia",        name_es: "Georgia",        flag: "🇬🇪" },
   Wales:           { code: "WAL", name_en: "Wales",          name_es: "Gales",          flag: "🏴󠁧󠁢󠁷󠁬󠁳󠁿" },
+  Sweden:          { code: "SWE", name_en: "Sweden",         name_es: "Suecia",         flag: "🇸🇪" },
+  Norway:          { code: "NOR", name_en: "Norway",         name_es: "Noruega",        flag: "🇳🇴" },
   // CAF
   Morocco:         { code: "MAR", name_en: "Morocco",        name_es: "Marruecos",      flag: "🇲🇦" },
   Senegal:         { code: "SEN", name_en: "Senegal",        name_es: "Senegal",        flag: "🇸🇳" },
@@ -109,6 +111,8 @@ const TEAM_MAP: Record<string, TeamDef> = {
   Algeria:         { code: "ALG", name_en: "Algeria",        name_es: "Argelia",        flag: "🇩🇿" },
   Mali:            { code: "MLI", name_en: "Mali",           name_es: "Malí",           flag: "🇲🇱" },
   Tunisia:         { code: "TUN", name_en: "Tunisia",        name_es: "Túnez",          flag: "🇹🇳" },
+  "Cape Verde Islands": { code: "CPV", name_en: "Cape Verde", name_es: "Cabo Verde",    flag: "🇨🇻" },
+  "Congo DR":      { code: "COD", name_en: "DR Congo",       name_es: "RD del Congo",   flag: "🇨🇩" },
   // AFC
   Japan:           { code: "JPN", name_en: "Japan",          name_es: "Japón",          flag: "🇯🇵" },
   "South Korea":   { code: "KOR", name_en: "South Korea",    name_es: "Corea del Sur",  flag: "🇰🇷" },
@@ -117,6 +121,8 @@ const TEAM_MAP: Record<string, TeamDef> = {
   "Saudi Arabia":  { code: "KSA", name_en: "Saudi Arabia",   name_es: "Arabia Saudita", flag: "🇸🇦" },
   Qatar:           { code: "QAT", name_en: "Qatar",          name_es: "Catar",          flag: "🇶🇦" },
   Iraq:            { code: "IRQ", name_en: "Iraq",           name_es: "Irak",           flag: "🇮🇶" },
+  Jordan:          { code: "JOR", name_en: "Jordan",         name_es: "Jordania",       flag: "🇯🇴" },
+  Uzbekistan:      { code: "UZB", name_en: "Uzbekistan",     name_es: "Uzbekistán",     flag: "🇺🇿" },
   // OFC
   "New Zealand":   { code: "NZL", name_en: "New Zealand",    name_es: "Nueva Zelanda",  flag: "🇳🇿" },
 };
