@@ -233,7 +233,7 @@ ON CONFLICT (id) DO NOTHING;
 -- ─── memberships ─────────────────────────────────────────────────────────────
 
 INSERT INTO memberships (pool_id, user_id, role, hidden)
-SELECT p.id, m.user_id, m.role, false
+SELECT p.id, m.user_id::uuid, m.role, false
 FROM pools p
 CROSS JOIN (VALUES
   ('00000000-0000-0000-0000-000000000001', 'admin'),
@@ -363,10 +363,10 @@ ON CONFLICT (pool_id, user_id, game_id) DO UPDATE
 -- If running seed-dev.sql independently (not via supabase db reset), ensure
 -- migrations have already been applied.
 
-UPDATE games
-SET updated_at = now()
-WHERE external_id IN ('dev-m1', 'dev-m2', 'dev-m11')
-  AND result_status = 'confirmed';
+SELECT public.score_game(g.id)
+FROM games g
+WHERE g.external_id IN ('dev-m1', 'dev-m2', 'dev-m11')
+  AND g.result_status = 'confirmed';
 
 -- ─── verify ───────────────────────────────────────────────────────────────────
 
