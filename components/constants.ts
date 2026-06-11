@@ -31,6 +31,7 @@ export const BACKDROP_COLOR = 'rgba(16, 22, 31, 0.42)';
 export const TABULAR: TextStyle = { fontVariant: [...TABULAR_NUMS.fontVariant] };
 
 /* ---- token hex twins for SVG color props (see global.css) ---- */
+export const COLOR_BG = '#f5f7f9'; // --color-bg          (q-slate-25)
 export const COLOR_TEXT = '#12181f'; // --color-text       (q-slate-900)
 export const COLOR_TEXT_2 = '#4d555e'; // --color-text-2    (q-slate-600)
 export const COLOR_TEXT_3 = '#6a7179'; // --color-text-3    (q-slate-500)

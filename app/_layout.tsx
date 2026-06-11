@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { COLOR_BG } from '../components/constants';
 import { PoolDataProvider } from '../lib/data';
 import { AppProviders } from '../lib/providers';
 
@@ -33,7 +34,7 @@ export default function RootLayout() {
             <Stack
               screenOptions={{
                 headerShown: false,
-                contentStyle: { backgroundColor: '#f5f7f9' },
+                contentStyle: { backgroundColor: COLOR_BG },
               }}
             />
           </PoolDataProvider>

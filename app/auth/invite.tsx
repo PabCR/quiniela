@@ -8,7 +8,7 @@
  */
 
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -36,13 +36,9 @@ export default function InviteScreen() {
   const { codeError } = useLocalSearchParams<{ codeError?: string }>();
 
   const [code, setCode] = useState('');
-  const [error, setError] = useState('');
+  // Pre-set when bounced back from the profile step because the code was rotated.
+  const [error, setError] = useState(() => (codeError ? t('inviteErrorWrong') : ''));
   const [checking, setChecking] = useState(false);
-
-  // Bounced back here from the profile step because the code was rotated.
-  useEffect(() => {
-    if (codeError) setError(t('inviteErrorWrong'));
-  }, [codeError, t]);
 
   const shakeX = useSharedValue(0);
   const shakeStyle = useAnimatedStyle(() => ({
@@ -50,11 +46,13 @@ export default function InviteScreen() {
   }));
   const triggerShake = () => {
     if (reduceMotion) return;
-    shakeX.value = withSequence(
-      withTiming(-8, { duration: DURATION_FAST / 3 }),
-      withTiming(8, { duration: DURATION_FAST / 3 }),
-      withTiming(-5, { duration: DURATION_FAST / 3 }),
-      withTiming(0, { duration: DURATION_FAST / 3 }),
+    shakeX.set(
+      withSequence(
+        withTiming(-8, { duration: DURATION_FAST / 3 }),
+        withTiming(8, { duration: DURATION_FAST / 3 }),
+        withTiming(-5, { duration: DURATION_FAST / 3 }),
+        withTiming(0, { duration: DURATION_FAST / 3 }),
+      ),
     );
   };
 
