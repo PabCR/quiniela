@@ -218,6 +218,33 @@ INSERT INTO auth.users (
    '{"provider":"email","providers":["email"]}', '{}')
 ON CONFLICT (id) DO NOTHING;
 
+-- GoTrue scans these token columns as Go strings — NULLs break every sign-in
+-- with "Database error querying schema". Manually-inserted users need ''.
+UPDATE auth.users SET
+  confirmation_token        = coalesce(confirmation_token, ''),
+  recovery_token            = coalesce(recovery_token, ''),
+  email_change              = coalesce(email_change, ''),
+  email_change_token_new    = coalesce(email_change_token_new, ''),
+  email_change_token_current= coalesce(email_change_token_current, ''),
+  phone_change              = coalesce(phone_change, ''),
+  phone_change_token        = coalesce(phone_change_token, ''),
+  reauthentication_token    = coalesce(reauthentication_token, '')
+WHERE id::text LIKE '00000000-0000-0000-0000-00000000000%';
+
+-- auth.identities rows so GoTrue can authenticate these users (password/OTP);
+-- without them sign-in fails with "Database error querying schema".
+INSERT INTO auth.identities (
+  id, provider_id, user_id, identity_data, provider,
+  last_sign_in_at, created_at, updated_at
+)
+SELECT
+  gen_random_uuid(), u.id::text, u.id,
+  jsonb_build_object('sub', u.id::text, 'email', u.email, 'email_verified', true),
+  'email', now(), now(), now()
+FROM auth.users u
+WHERE u.id::text LIKE '00000000-0000-0000-0000-00000000000%'
+ON CONFLICT (provider_id, provider) DO NOTHING;
+
 -- ─── profiles ─────────────────────────────────────────────────────────────────
 
 INSERT INTO profiles (id, name, emoji, lang) VALUES
