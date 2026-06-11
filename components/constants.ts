@@ -42,3 +42,12 @@ export const COLOR_EXACT = '#0a693c'; // --color-exact / --color-saved (q-green-
 export const COLOR_PARTIAL = '#875800'; // --color-partial (q-amber-ink)
 export const COLOR_LOCKED = '#4d555e'; // --color-locked  (q-slate-600)
 export const COLOR_SURFACE = '#ffffff'; // --color-surface
+
+/**
+ * The 22 avatar emojis from prototype/app/data.js (Q_EMOJIS) — the single
+ * canonical set used by the onboarding profile picker AND the Me avatar editor.
+ */
+export const Q_EMOJIS = [
+  '🦊', '🌺', '🎩', '🐱', '⚽', '🦋', '🌮', '🌟', '🎸', '🍓', '🐻',
+  '🎨', '🚴', '🌙', '🥑', '🌵', '🐢', '🦜', '🍋', '🎺', '🐙', '🌶️',
+] as const;

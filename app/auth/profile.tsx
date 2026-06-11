@@ -32,12 +32,8 @@ import {
   getPendingInviteCode,
 } from '../../lib/onboarding';
 import { supabase } from '../../lib/supabase';
-
-// The 22 avatar emojis from prototype/app/data.js (Q_EMOJIS), full set.
-const Q_EMOJIS = [
-  '🦊', '🌺', '🎩', '🐱', '⚽', '🦋', '🌮', '🌟', '🎸', '🍓', '🐻',
-  '🎨', '🚴', '🌙', '🥑', '🌵', '🐢', '🦜', '🍋', '🎺', '🐙', '🌶️',
-] as const;
+// The 22 avatar emojis from prototype/app/data.js (Q_EMOJIS), canonical set.
+import { Q_EMOJIS } from '../../components/constants';
 
 interface PgError {
   code?: string;

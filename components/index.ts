@@ -26,3 +26,5 @@ export { FilterChips } from './FilterChips';
 export type { FilterOption } from './FilterChips';
 export { MatchCard } from './MatchCard';
 export { PicksTable } from './PicksTable';
+export { HistoryList } from './HistoryList';
+export { StatTiles } from './StatTiles';
