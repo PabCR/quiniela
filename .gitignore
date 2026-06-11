@@ -1,6 +1,3 @@
-# macOS
-.DS_Store
-
 # dependencies
 node_modules/
 
@@ -10,11 +7,32 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Native builds
-ios/
-android/
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 
-# Env
+# generated native folders
+/ios
+/android
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# env
 .env
 .env.*
 !.env.example
@@ -23,7 +41,6 @@ android/
 supabase/.branches/
 supabase/.temp/
 
-# misc
-*.log
+# typescript / tests
 *.tsbuildinfo
 coverage/
