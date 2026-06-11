@@ -1,0 +1,187 @@
+/* Quiniela — match-card direction explorations. Consumes tokens.css only. */
+
+/* ---------- shared phone-frame scaffolding ---------- */
+.ph {
+  background: var(--color-bg);
+  height: 100%;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+.ph-head { display: flex; justify-content: space-between; align-items: center; }
+.ph-title { font: var(--text-title); margin: 0; }
+.ph-badge {
+  background: var(--color-accent); color: var(--color-on-accent);
+  border-radius: var(--radius-pill); padding: 9px 15px;
+  font: var(--text-label); display: inline-flex; align-items: center; gap: 7px;
+}
+.ph-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-on-accent); opacity: .9; }
+.ph-date {
+  font: var(--text-label); color: var(--color-text-3);
+  text-transform: uppercase; letter-spacing: var(--tracking-caps); margin-top: -2px;
+}
+.anno { font: 500 11px var(--font-mono); color: var(--color-text-3); margin: 2px 2px -8px; }
+
+/* shared chips */
+.chip {
+  font: var(--text-caption); font-weight: 650; padding: 5px 11px;
+  border-radius: var(--radius-pill); display: inline-flex; align-items: center; gap: 5px;
+  font-variant-numeric: var(--numeric);
+}
+.chip--exact   { background: var(--color-exact);  color: #fff; }
+.chip--exact-soft { background: #fff; color: var(--color-exact); }
+.chip--void    { background: var(--color-surface-3); color: var(--color-text-2); }
+.chip--postponed { background: var(--color-partial-soft); color: var(--color-partial); }
+.chip--live    { background: #fff; color: var(--color-live); box-shadow: var(--shadow-card); }
+.chip--urgent  { background: #fff; color: var(--color-urgent); box-shadow: var(--shadow-card); }
+.chip .livedot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); }
+.lock-ic { display: inline-block; vertical-align: -1px; }
+
+/* ======================================================================
+   DIRECTION A · SOFT TILES — pastel state washes, centered, reference-true
+   ====================================================================== */
+.ca {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  padding: 16px 16px 13px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.ca--live   { background: var(--color-live-soft); }
+.ca--exact  { background: var(--color-exact-soft); }
+.ca--void   { background: var(--color-void-soft); box-shadow: none; border: 1px solid var(--color-border); }
+.ca--urgent { background: var(--color-urgent-soft); }
+.ca-row { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; }
+.ca-team { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.ca-flag {
+  width: 46px; height: 46px; border-radius: 50%;
+  background: var(--color-surface); box-shadow: var(--shadow-card);
+  display: grid; place-items: center; font-size: 24px; line-height: 1;
+}
+.ca-code { font: var(--text-label); letter-spacing: var(--tracking-caps); }
+.ca-center { display: flex; flex-direction: column; align-items: center; gap: 7px; min-height: 68px; justify-content: center; }
+.ca-overline { font: var(--text-caption); font-weight: 650; color: var(--color-text-3); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.ca-score { font: var(--text-score); font-size: 30px; font-variant-numeric: var(--numeric); letter-spacing: .02em; }
+.ca-score--muted { color: var(--color-text-disabled); }
+.ca-cta {
+  font: 600 15px/1 var(--font-sans);
+  background: var(--color-accent); color: var(--color-on-accent);
+  border: none; border-radius: var(--radius-pill);
+  min-height: var(--tap-target); padding: 0 24px; cursor: pointer;
+}
+.ca-meta {
+  display: flex; justify-content: center; align-items: center; gap: 7px;
+  font: var(--text-label); color: var(--color-text-2); min-height: 20px;
+}
+.ca--void .ca-meta, .ca--void .ca-code { color: var(--color-text-3); }
+.ca--void .ca-flag { filter: grayscale(.6); opacity: .75; box-shadow: none; border: 1px solid var(--color-border); }
+
+/* ======================================================================
+   DIRECTION B · INK LEDGER — white, typographic, stacked team rows (ES)
+   ====================================================================== */
+.cb {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cb-trow { display: flex; align-items: center; gap: 11px; min-height: 36px; }
+.cb-flag { font-size: 23px; width: 28px; text-align: center; line-height: 1; }
+.cb-name { font: var(--text-heading); flex: 1; min-width: 0; }
+.cb-num {
+  font: 700 28px/1 var(--font-sans); font-variant-numeric: var(--numeric);
+  min-width: 34px; text-align: right;
+}
+.cb-num--ghost { color: var(--color-text-disabled); font-weight: 600; }
+.cb-mypick { font: var(--text-caption); color: var(--color-text-3); min-width: 24px; text-align: right; font-variant-numeric: var(--numeric); }
+.cb-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border-top: 1px solid var(--color-border); padding-top: 11px; min-height: 44px;
+}
+.cb-meta { font: var(--text-label); color: var(--color-text-2); }
+.cb-meta--live { color: var(--color-live); display: inline-flex; align-items: center; gap: 6px; }
+.cb-meta .livedot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-live); display: inline-block; }
+.cb-pill {
+  font: 600 14px/1 var(--font-sans);
+  background: var(--color-accent); color: var(--color-on-accent);
+  border: none; border-radius: var(--radius-pill);
+  min-height: var(--tap-target); padding: 0 20px; cursor: pointer;
+}
+.cb-ghostbtn {
+  font: 600 14px/1 var(--font-sans); color: var(--color-text);
+  background: transparent; border: 1.5px solid var(--color-border-strong);
+  border-radius: var(--radius-pill); min-height: 40px; padding: 0 18px; cursor: pointer;
+}
+.cb-urgent {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--color-urgent-soft); color: var(--color-urgent);
+  border-radius: var(--radius-md); padding: 8px 8px 8px 14px;
+  font: var(--text-label);
+}
+.cb--void { background: var(--color-void-soft); border-style: dashed; }
+.cb--void .cb-name { color: var(--color-text-3); }
+.cb--void .cb-flag { filter: grayscale(.6); opacity: .75; }
+
+/* ======================================================================
+   DIRECTION C · SCOREBOARD — center capsule morphs per state
+   ====================================================================== */
+.cc {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 16px 14px 13px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cc-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.cc-team { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.cc-flag {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: var(--color-surface-2);
+  display: grid; place-items: center; font-size: 23px; line-height: 1;
+}
+.cc-code { font: 650 14px/1.2 var(--font-sans); letter-spacing: var(--tracking-caps); }
+.cc-nm { font: var(--text-caption); color: var(--color-text-3); max-width: 90px; text-align: center; }
+.cc-capwrap { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.cc-capover { font: var(--text-caption); font-weight: 650; min-height: 15px; color: var(--color-text-3); display: inline-flex; align-items: center; gap: 5px; }
+.cc-capover--live { color: var(--color-live); }
+.cc-capover .livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-live); }
+.cc-cap {
+  min-width: 108px; min-height: 52px; border-radius: var(--radius-md);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  background: var(--color-surface-2);
+  font-variant-numeric: var(--numeric);
+  border: none; cursor: default;
+}
+.cc-cap--cta { background: var(--color-accent); color: var(--color-on-accent); font: 600 16px/1 var(--font-sans); cursor: pointer; }
+.cc-cap--cta.is-urgent { background: var(--color-urgent); }
+.cc-capscore { font: 700 24px/1.1 var(--font-sans); letter-spacing: .02em; }
+.cc-caplabel { font: var(--text-caption); color: var(--color-text-3); }
+.cc-cap--final { background: var(--color-accent); color: var(--color-on-accent); }
+.cc-cap--final .cc-caplabel { color: oklch(1 0 0 / .65); }
+.cc-cap--void { background: transparent; border: 1.5px dashed var(--color-border-strong); color: var(--color-text-disabled); }
+.cc-cap--locked { background: var(--color-surface-3); color: var(--color-text-2); }
+.cc-foot {
+  display: flex; justify-content: center; align-items: center; gap: 8px;
+  font: var(--text-label); color: var(--color-text-3); min-height: 24px; text-align: center;
+}
+.cc-foot--urgent { color: var(--color-urgent); font-weight: 650; }
+.cc--void { box-shadow: none; border: 1px solid var(--color-border); background: var(--color-void-soft); }
+.cc--void .cc-flag { filter: grayscale(.6); opacity: .75; background: var(--color-surface); }
+
+/* ======================================================================
+   Tokens specimen board
+   ====================================================================== */
+.tk { padding: 28px; font-family: var(--font-sans); color: var(--color-text); display: flex; flex-direction: column; gap: 22px; background: #fff; height: 100%; }
+.tk h3 { font: var(--text-label); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--color-text-3); margin: 0 0 10px; }
+.tk-swatches { display: flex; gap: 8px; }
+.tk-sw { flex: 1; }
+.tk-sw .box { height: 44px; border-radius: 10px; border: 1px solid oklch(0 0 0 / .06); }
+.tk-sw .lbl { font: 500 10px var(--font-mono); color: var(--color-text-3); margin-top: 5px; }
+.tk-typerow { display: flex; align-items: baseline; gap: 16px; margin-bottom: 8px; }
+.tk-typerow .lbl { font: 500 10px var(--font-mono); color: var(--color-text-3); width: 130px; flex: none; }
+.tk-chips { display: flex; gap: 8px; flex-wrap: wrap; }

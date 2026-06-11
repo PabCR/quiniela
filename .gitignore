@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native builds
+ios/
+android/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# misc
+*.log
+*.tsbuildinfo
+coverage/

@@ -1,0 +1,118 @@
+/* ==========================================================================
+   QUINIELA — Design Tokens v1
+   --------------------------------------------------------------------------
+   Minimal neutral · cool slate · ink accent · light mode first.
+   Components must ONLY reference alias tokens (section 2).
+   Future themes (festive WC skin, team colors, dark mode) are produced by
+   swapping values in this file — never by editing component CSS.
+   ========================================================================== */
+
+:root {
+
+  /* ------------------------------------------------------------------
+     1 · PRIMITIVES (raw values — do not use directly in components)
+     ------------------------------------------------------------------ */
+
+  /* Cool slate ramp */
+  --q-slate-0:   oklch(0.99 0.002 250);
+  --q-slate-25:  oklch(0.975 0.004 250);
+  --q-slate-50:  oklch(0.962 0.006 250);
+  --q-slate-100: oklch(0.94 0.008 250);
+  --q-slate-200: oklch(0.905 0.01 250);
+  --q-slate-300: oklch(0.845 0.012 250);
+  --q-slate-400: oklch(0.70 0.014 252);
+  --q-slate-500: oklch(0.545 0.016 252);
+  --q-slate-600: oklch(0.445 0.018 254);
+  --q-slate-700: oklch(0.35 0.02 254);
+  --q-slate-800: oklch(0.265 0.02 256);
+  --q-slate-900: oklch(0.205 0.018 256);
+
+  /* Semantic hue family — matched chroma/lightness, varied hue.
+     “ink” shades pass AA on white & tint backgrounds. */
+  --q-green-ink:  oklch(0.46 0.11 155);  /* exact / success */
+  --q-green-soft: oklch(0.93 0.045 155);
+  --q-amber-ink:  oklch(0.50 0.11 75);   /* partial / outcome */
+  --q-amber-soft: oklch(0.94 0.05 85);
+  --q-red-ink:    oklch(0.50 0.16 25);   /* live / urgency */
+  --q-red-soft:   oklch(0.94 0.035 25);
+
+  /* ------------------------------------------------------------------
+     2 · ALIASES (what components actually use)
+     ------------------------------------------------------------------ */
+
+  /* Surfaces */
+  --color-bg:           var(--q-slate-25);   /* app background */
+  --color-surface:      #ffffff;             /* cards */
+  --color-surface-2:    var(--q-slate-50);   /* inset wells, capsules */
+  --color-surface-3:    var(--q-slate-100);  /* pressed / muted fills */
+  --color-border:       var(--q-slate-200);
+  --color-border-strong:var(--q-slate-300);
+
+  /* Text */
+  --color-text:         var(--q-slate-900);
+  --color-text-2:       var(--q-slate-600);
+  --color-text-3:       var(--q-slate-500);
+  --color-text-disabled:var(--q-slate-400);
+
+  /* Accent (interactive) — ink. Swappable to any brand hue later. */
+  --color-accent:        var(--q-slate-900);
+  --color-accent-hover:  var(--q-slate-800);
+  --color-on-accent:     #ffffff;
+  --color-accent-soft:   var(--q-slate-100);  /* selected chips, focus wells */
+
+  /* Semantic — pick outcomes & match states */
+  --color-exact:        var(--q-green-ink);
+  --color-exact-soft:   var(--q-green-soft);
+  --color-partial:      var(--q-amber-ink);
+  --color-partial-soft: var(--q-amber-soft);
+  --color-miss:         var(--q-slate-500);
+  --color-miss-soft:    var(--q-slate-100);
+  --color-locked:       var(--q-slate-600);
+  --color-locked-soft:  var(--q-slate-100);
+  --color-void:         var(--q-slate-400);
+  --color-void-soft:    var(--q-slate-50);
+  --color-live:         var(--q-red-ink);
+  --color-live-soft:    var(--q-red-soft);
+  --color-urgent:       var(--q-red-ink);
+  --color-urgent-soft:  var(--q-red-soft);
+  --color-saved:        var(--q-green-ink);  /* pick-saved confirmation */
+
+  /* ------------------------------------------------------------------
+     3 · TYPE — system stack, generous sizes (16px body minimum)
+     ------------------------------------------------------------------ */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+               Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-display: 700 2.5rem/1.05 var(--font-sans);   /* 40 — hero scores */
+  --text-score:   700 1.75rem/1.1 var(--font-sans);   /* 28 — card scores */
+  --text-title:   700 1.375rem/1.2 var(--font-sans);  /* 22 — screen titles */
+  --text-heading: 650 1.0625rem/1.3 var(--font-sans); /* 17 — team names, rows */
+  --text-body:    400 1rem/1.5 var(--font-sans);      /* 16 — minimum body */
+  --text-label:   600 0.8125rem/1.25 var(--font-sans);/* 13 — chips, meta */
+  --text-caption: 500 0.75rem/1.3 var(--font-sans);   /* 12 — fine print only */
+
+  --tracking-caps: 0.06em;       /* for uppercase labels */
+  --numeric: tabular-nums;       /* all scores & points use tabular figures */
+
+  /* ------------------------------------------------------------------
+     4 · SPACE · RADII · ELEVATION · MOTION
+     ------------------------------------------------------------------ */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+
+  --radius-sm:   10px;   /* chips, tags */
+  --radius-md:   16px;   /* inputs, capsules */
+  --radius-lg:   22px;   /* cards */
+  --radius-xl:   28px;   /* sheets, hero tiles */
+  --radius-pill: 999px;
+
+  --shadow-card:  0 1px 2px oklch(0.2 0.02 256 / 0.05), 0 4px 16px oklch(0.2 0.02 256 / 0.06);
+  --shadow-float: 0 4px 12px oklch(0.2 0.02 256 / 0.10), 0 12px 32px oklch(0.2 0.02 256 / 0.10);
+
+  --tap-target: 44px;            /* minimum touch target */
+
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* the delight moment */
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+}
