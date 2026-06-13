@@ -137,3 +137,41 @@ describe('writeSnapshot + readSnapshot roundtrip', () => {
     expect(await readSnapshot(UID, 'session')).toBeNull();
   });
 });
+
+describe('write coalescing (leading-edge + trailing throttle)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  it('first write in a window persists immediately (leading edge)', () => {
+    writeSnapshot(UID, 'pool-1', { n: 1 });
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('N rapid writes in one window → 2 setItem (leading + trailing, last value)', async () => {
+    writeSnapshot(UID, 'pool-1', { n: 1 });
+    writeSnapshot(UID, 'pool-1', { n: 2 });
+    writeSnapshot(UID, 'pool-1', { n: 3 });
+    writeSnapshot(UID, 'pool-1', { n: 4 });
+    writeSnapshot(UID, 'pool-1', { n: 5 });
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1); // leading only, so far
+    await vi.advanceTimersByTimeAsync(300);
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(2); // + trailing
+    expect(await readSnapshot<{ n: number }>(UID, 'pool-1')).toEqual({ n: 5 });
+  });
+
+  it('writes spaced beyond the window each persist immediately', async () => {
+    writeSnapshot(UID, 'pool-1', { n: 1 });
+    await vi.advanceTimersByTimeAsync(301);
+    writeSnapshot(UID, 'pool-1', { n: 2 });
+    await vi.advanceTimersByTimeAsync(301);
+    writeSnapshot(UID, 'pool-1', { n: 3 });
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(3);
+  });
+
+  it('different slots throttle independently (each leads)', () => {
+    writeSnapshot(UID, 'pool-1', { n: 1 });
+    writeSnapshot(UID, 'pool-2', { n: 1 });
+    expect(AsyncStorage.setItem).toHaveBeenCalledTimes(2);
+  });
+});

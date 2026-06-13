@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export const CACHE_VERSION = 1;
 
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1_000; // 7 days
+const WRITE_THROTTLE_MS = 300;
 
 export interface CacheEnvelope<T> {
   v: number;
@@ -64,9 +65,19 @@ function persist(key: string, env: CacheEnvelope<unknown>): void {
   }
 }
 
+interface PendingWrite {
+  trailingHandle: ReturnType<typeof setTimeout> | null;
+  windowEnd: number;
+  latest: CacheEnvelope<unknown> | null;
+}
+
+const pendingWrites = new Map<string, PendingWrite>();
+
 /**
- * Persist a snapshot (fire-and-forget). Immediate write for now; Task 2 adds the
- * leading-edge + trailing throttle.
+ * Persist a snapshot (fire-and-forget). Leading-edge + trailing throttle: the
+ * first call in a quiet window writes immediately and opens a WRITE_THROTTLE_MS
+ * window; calls within the window coalesce into one trailing write carrying the
+ * latest value. Worst-case staleness is bounded by WRITE_THROTTLE_MS.
  */
 export function writeSnapshot<T>(userId: string, slot: string, data: T): void {
   const key = cacheKey(userId, slot);
@@ -76,7 +87,36 @@ export function writeSnapshot<T>(userId: string, slot: string, data: T): void {
     ts: Date.now(),
     data,
   };
-  persist(key, env);
+  const now = Date.now();
+  const p = pendingWrites.get(key);
+
+  if (!p || now >= p.windowEnd) {
+    // Leading edge: persist now, open a fresh window.
+    persist(key, env);
+    pendingWrites.set(key, {
+      trailingHandle: null,
+      windowEnd: now + WRITE_THROTTLE_MS,
+      latest: null,
+    });
+    return;
+  }
+
+  // Within the window: remember the latest value, arm a single trailing flush.
+  p.latest = env;
+  if (p.trailingHandle === null) {
+    p.trailingHandle = setTimeout(() => {
+      const cur = pendingWrites.get(key);
+      if (!cur) return;
+      const pending = cur.latest;
+      // Open a fresh window so a following burst leads again.
+      pendingWrites.set(key, {
+        trailingHandle: null,
+        windowEnd: Date.now() + WRITE_THROTTLE_MS,
+        latest: null,
+      });
+      if (pending) persist(key, pending);
+    }, p.windowEnd - now);
+  }
 }
 
 /** Placeholder — fully implemented in Task 3. */
@@ -90,6 +130,13 @@ export async function clearSnapshots(
 ): Promise<void> {
   if (!userId) return;
   const prefix = `quiniela.cache.${userId}.`;
+  // Cancel any in-flight throttle windows for this user.
+  for (const [key, p] of pendingWrites) {
+    if (key.startsWith(prefix)) {
+      if (p.trailingHandle !== null) clearTimeout(p.trailingHandle);
+      pendingWrites.delete(key);
+    }
+  }
   try {
     const allKeys = await AsyncStorage.getAllKeys();
     const userKeys = allKeys.filter((k) => k.startsWith(prefix));
