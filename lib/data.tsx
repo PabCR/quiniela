@@ -1,8 +1,8 @@
 /* lib/data.tsx — the pool data layer (no react-query; plain context + hooks).
  *
- * One PoolDataProvider mounted after the auth gate (see app/(tabs)/_layout.tsx
- * documentation) loads everything the Matches list + Match detail need, keyed to
- * the signed-in user's first active membership (pool):
+ * One PoolDataProvider mounted at the root layout (app/_layout.tsx), wrapping
+ * the whole Stack above the auth gate, loads everything the Matches list + Match
+ * detail need, keyed to the signed-in user's first active membership (pool):
  *
  *   teams     TeamsMap            — reference data (code → Team)
  *   pool      Pool                — the caller's pool (pts config, scoring_locked)
@@ -40,6 +40,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { useSession } from './providers';
 import { supabase } from './supabase';
+import { readSnapshot, removeSnapshot, writeSnapshot } from './cache';
 import { pendingMatches, type PicksByGame } from './engine';
 import { useNow } from './now';
 import type {
@@ -93,6 +94,16 @@ interface PoolDataValue {
   applyMyGuess: (gameId: number, guess: Guess | null) => void;
 }
 
+/** Everything PoolDataProvider persists under the `pool-<poolId>` slot. */
+interface PoolCachePayload {
+  teams: TeamsMap;
+  pool: Pool;
+  games: Game[];
+  members: PoolMember[];
+  allGuesses: Guess[];
+  tournamentId: number;
+}
+
 const PoolDataContext = createContext<PoolDataValue | null>(null);
 
 /* ------------------------------------------------------------------ *
@@ -144,74 +155,98 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
   // games SELECT policy is member-gated, not tournament-gated, so a realtime
   // game event could be for another tournament in a multi-tournament DB).
   const tournamentIdRef = useRef<number | null>(null);
+  // Detects a pool switch so we can drop the previous pool's cached slot.
+  const prevPoolIdRef = useRef<number | null>(null);
+  // Mirrors current state for the realtime debounced cache flush.
+  const latestSnapshotRef = useRef<{
+    poolId: number | null;
+    payload: PoolCachePayload | null;
+  }>({ poolId: null, payload: null });
+  // Trailing-debounce handle for realtime-driven cache writes.
+  const cacheFlushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const load = useCallback(async () => {
-    if (!myId || !poolId) {
-      setLoading(false);
-      return;
-    }
-    const seq = ++loadSeq.current;
-    setError(null);
-
-    // The pool row first — we need its tournament_id to scope games.
-    const poolRes = await supabase
-      .from('pools')
-      .select('id, tournament_id, name, invite_code, pts_full, pts_partial, scoring_locked, created_by')
-      .eq('id', poolId)
-      .maybeSingle();
-
-    if (poolRes.error || !poolRes.data) {
-      if (seq === loadSeq.current) {
-        setError(poolRes.error?.message ?? 'Pool not found');
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      if (!myId || !poolId) {
         setLoading(false);
+        return;
       }
-      return;
-    }
-    const poolRow = poolRes.data as Pool;
-    const tournamentId = poolRow.tournament_id;
-    tournamentIdRef.current = tournamentId;
+      // Non-silent (cache miss / first run / pull-to-refresh) shows the spinner;
+      // silent background revalidation leaves on-screen data untouched. Without
+      // this, the context's `refetch: load` (pull-to-refresh) shows no spinner
+      // and the load-timeout effect never arms.
+      if (!silent) setLoading(true);
+      const seq = ++loadSeq.current;
+      if (!silent) setError(null);
 
-    const [teamsRes, gamesRes, membersRes, guessesRes] = await Promise.all([
-      supabase.from('teams').select('code, name_en, name_es, flag'),
-      supabase
-        .from('games')
+      // The pool row first — we need its tournament_id to scope games.
+      const poolRes = await supabase
+        .from('pools')
         .select(
-          'id, tournament_id, external_id, stage, home, away, kickoff, location, score_home, score_away, advancer, result_status, confirmed_at, voided, postponed, corrected, updated_at',
+          'id, tournament_id, name, invite_code, pts_full, pts_partial, scoring_locked, created_by',
         )
-        .eq('tournament_id', tournamentId)
-        .order('kickoff', { ascending: true }),
-      supabase
-        .from('memberships')
-        .select('user_id, role, hidden, profiles!inner(name, emoji)')
-        .eq('pool_id', poolId)
-        .eq('hidden', false),
-      supabase
-        .from('guesses')
-        .select('pool_id, user_id, game_id, home, away, advancer, points, tag, updated_at')
-        .eq('pool_id', poolId),
-    ]);
+        .eq('id', poolId)
+        .maybeSingle();
 
-    if (seq !== loadSeq.current) return;
+      if (poolRes.error || !poolRes.data) {
+        if (seq === loadSeq.current) {
+          if (!silent) setError(poolRes.error?.message ?? 'Pool not found');
+          setLoading(false);
+        }
+        return;
+      }
+      const poolRow = poolRes.data as Pool;
+      const tournamentId = poolRow.tournament_id;
+      tournamentIdRef.current = tournamentId;
 
-    const firstErr =
-      teamsRes.error || gamesRes.error || membersRes.error || guessesRes.error;
-    if (firstErr) {
-      setError(firstErr.message);
-      setLoading(false);
-      return;
-    }
+      const [teamsRes, gamesRes, membersRes, guessesRes] = await Promise.all([
+        supabase.from('teams').select('code, name_en, name_es, flag'),
+        supabase
+          .from('games')
+          .select(
+            'id, tournament_id, external_id, stage, home, away, kickoff, location, score_home, score_away, advancer, result_status, confirmed_at, voided, postponed, corrected, updated_at',
+          )
+          .eq('tournament_id', tournamentId)
+          .order('kickoff', { ascending: true }),
+        supabase
+          .from('memberships')
+          .select('user_id, role, hidden, profiles!inner(name, emoji)')
+          .eq('pool_id', poolId)
+          .eq('hidden', false),
+        supabase
+          .from('guesses')
+          .select(
+            'pool_id, user_id, game_id, home, away, advancer, points, tag, updated_at',
+          )
+          .eq('pool_id', poolId),
+      ]);
 
-    setPool(poolRow);
-    setTeams(indexTeams((teamsRes.data ?? []) as never));
-    setGames((gamesRes.data ?? []) as Game[]);
-    setMembers(
-      ((membersRes.data ?? []) as Array<{
-        user_id: string;
-        role: 'admin' | 'player';
-        hidden: boolean;
-        profiles: Pick<Profile, 'name' | 'emoji'> | Pick<Profile, 'name' | 'emoji'>[];
-      }>).map((m) => {
-        // supabase types the embedded relation as an array; it's 1:1 here.
+      if (seq !== loadSeq.current) return;
+
+      const firstErr =
+        teamsRes.error || gamesRes.error || membersRes.error || guessesRes.error;
+      // On failure we leave on-screen/cached data untouched (no setState here) —
+      // a silent revalidation that fails keeps what the cache hydrated. Mirrors
+      // SessionProvider's keep-cache-on-transient-failure.
+      if (firstErr) {
+        if (!silent) setError(firstErr.message);
+        setLoading(false);
+        return;
+      }
+
+      const teamsMap = indexTeams((teamsRes.data ?? []) as never);
+      const gamesData = (gamesRes.data ?? []) as Game[];
+      const membersData = (
+        (membersRes.data ?? []) as Array<{
+          user_id: string;
+          role: 'admin' | 'player';
+          hidden: boolean;
+          profiles:
+            | Pick<Profile, 'name' | 'emoji'>
+            | Pick<Profile, 'name' | 'emoji'>[];
+        }>
+      ).map((m) => {
         const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
         return {
           user_id: m.user_id,
@@ -220,54 +255,190 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
           name: prof?.name ?? '',
           emoji: prof?.emoji ?? null,
         };
-      }),
-    );
-    setAllGuesses((guessesRes.data ?? []) as Guess[]);
-    setLoading(false);
-  }, [myId, poolId]);
+      });
+      const guessesData = (guessesRes.data ?? []) as Guess[];
 
-  // Initial + dependency-change load.
+      // Clear any stale error unconditionally — covers a silent revalidation
+      // that succeeds after a previous non-silent failure left an error banner.
+      setError(null);
+      setPool(poolRow);
+      setTeams(teamsMap);
+      setGames(gamesData);
+      setMembers(membersData);
+      setAllGuesses(guessesData);
+      setLoading(false);
+
+      // Persist the fresh snapshot for the next cold launch.
+      writeSnapshot<PoolCachePayload>(myId, `pool-${poolId}`, {
+        teams: teamsMap,
+        pool: poolRow,
+        games: gamesData,
+        members: membersData,
+        allGuesses: guessesData,
+        tournamentId,
+      });
+    },
+    [myId, poolId],
+  );
+
+  // Hydrate from cache (instant), then revalidate. Keyed on [poolId] (see below).
   useEffect(() => {
-    setLoading(true);
-    load();
-  }, [load]);
+    if (!poolId) {
+      // Abandon any in-flight load() started for the previous pool: bump loadSeq
+      // so a silent revalidation that resolves AFTER sign-out / pool-exit fails
+      // its `seq === loadSeq.current` guard and cannot re-write (resurrect) that
+      // pool's cache slot. (SessionProvider.signOut already cleared it.)
+      loadSeq.current += 1;
+      if (prevPoolIdRef.current !== null && myId) {
+        removeSnapshot(myId, `pool-${prevPoolIdRef.current}`);
+      }
+      prevPoolIdRef.current = null;
+      setLoading(false);
+      setError(null);
+      setPool(null);
+      setGames([]);
+      setMembers([]);
+      setAllGuesses([]);
+      setTeams({});
+      return;
+    }
+
+    // Pool switch: drop the previous pool's snapshot (storage hygiene only).
+    if (
+      prevPoolIdRef.current !== null &&
+      prevPoolIdRef.current !== poolId &&
+      myId
+    ) {
+      removeSnapshot(myId, `pool-${prevPoolIdRef.current}`);
+    }
+    prevPoolIdRef.current = poolId;
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const cached = myId
+        ? await readSnapshot<PoolCachePayload>(myId, `pool-${poolId}`)
+        : null;
+      if (cancelled) return;
+
+      if (cached) {
+        setError(null);
+        setTeams(cached.teams);
+        setPool(cached.pool);
+        setGames(cached.games);
+        setMembers(cached.members);
+        setAllGuesses(cached.allGuesses);
+        tournamentIdRef.current = cached.tournamentId;
+        setLoading(false);
+        load({ silent: true }); // silent background revalidation
+      } else {
+        load({ silent: false }); // normal spinner path
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Keyed on [poolId] only (spec §6.3). myId is intentionally excluded: it is
+    // always set whenever poolId is set, and any user switch cycles poolId
+    // through null, so this effect re-runs and re-captures the current myId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poolId]);
+
+  // Mirror state into latestSnapshotRef for the realtime debounced flush.
+  useEffect(() => {
+    if (!pool || tournamentIdRef.current == null) {
+      latestSnapshotRef.current = { poolId, payload: null };
+      return;
+    }
+    latestSnapshotRef.current = {
+      poolId,
+      payload: {
+        teams,
+        pool,
+        games,
+        members,
+        allGuesses,
+        tournamentId: tournamentIdRef.current,
+      },
+    };
+  }, [poolId, pool, teams, games, members, allGuesses]);
+
+  // myId via a ref so scheduleCacheFlush stays reference-stable (empty deps) and
+  // does NOT churn the realtime channel subscription when myId changes.
+  const myIdRef = useRef(myId);
+  useEffect(() => {
+    myIdRef.current = myId;
+  }, [myId]);
+
+  // Debounced cache write driven by realtime patches (2 s trailing). load()
+  // writes the cache directly on its own success; this covers in-place patches.
+  const scheduleCacheFlush = useCallback(() => {
+    if (cacheFlushTimer.current) clearTimeout(cacheFlushTimer.current);
+    cacheFlushTimer.current = setTimeout(() => {
+      const { poolId: pid, payload } = latestSnapshotRef.current;
+      const uid = myIdRef.current;
+      // Don't resurrect a slot for a pool we've already switched away from — a
+      // late realtime callback can re-arm this timer after the switch cleanup.
+      if (pid && payload && uid && pid === prevPoolIdRef.current) {
+        writeSnapshot<PoolCachePayload>(uid, `pool-${pid}`, payload);
+      }
+    }, 2_000);
+  }, []);
 
   /* ---- realtime: patch games + guesses in place ---- */
   useEffect(() => {
     if (!poolId) return;
 
-    const upsertGame = (row: Game) =>
+    const upsertGame = (row: Game) => {
       setGames((prev) => {
-        // Ignore games outside the loaded tournament (realtime is member-gated,
-        // not tournament-scoped).
-        if (tournamentIdRef.current != null && row.tournament_id !== tournamentIdRef.current) {
+        if (
+          tournamentIdRef.current != null &&
+          row.tournament_id !== tournamentIdRef.current
+        ) {
           return prev;
         }
         const i = prev.findIndex((g) => g.id === row.id);
-        if (i === -1) return [...prev, row].sort((a, b) => +new Date(a.kickoff) - +new Date(b.kickoff));
+        if (i === -1)
+          return [...prev, row].sort(
+            (a, b) => +new Date(a.kickoff) - +new Date(b.kickoff),
+          );
         const next = prev.slice();
         next[i] = { ...next[i], ...row };
         return next;
       });
+      scheduleCacheFlush();
+    };
 
-    const upsertGuess = (row: Guess) =>
+    const upsertGuess = (row: Guess) => {
       setAllGuesses((prev) => {
         const i = prev.findIndex(
-          (g) => g.game_id === row.game_id && g.user_id === row.user_id && g.pool_id === row.pool_id,
+          (g) =>
+            g.game_id === row.game_id &&
+            g.user_id === row.user_id &&
+            g.pool_id === row.pool_id,
         );
         if (i === -1) return [...prev, row];
         const next = prev.slice();
         next[i] = { ...next[i], ...row };
         return next;
       });
+      scheduleCacheFlush();
+    };
 
-    const removeGuess = (row: Partial<Guess>) =>
+    const removeGuess = (row: Partial<Guess>) => {
       setAllGuesses((prev) =>
         prev.filter(
           (g) =>
-            !(g.game_id === row.game_id && g.user_id === row.user_id && g.pool_id === row.pool_id),
+            !(
+              g.game_id === row.game_id &&
+              g.user_id === row.user_id &&
+              g.pool_id === row.pool_id
+            ),
         ),
       );
+      scheduleCacheFlush();
+    };
 
     const channel = supabase
       .channel(`pool-${poolId}`)
@@ -293,17 +464,31 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
       .subscribe();
 
     return () => {
+      if (cacheFlushTimer.current) clearTimeout(cacheFlushTimer.current);
       supabase.removeChannel(channel);
     };
-  }, [poolId]);
+    // scheduleCacheFlush is reference-stable (useCallback([]) + myIdRef), so the
+    // channel re-subscribes only when poolId changes — no myId-driven churn.
+  }, [poolId, scheduleCacheFlush]);
 
-  /* ---- fallback: refetch on app foreground ---- */
+  /* ---- fallback: refetch on app foreground (silent — data already on screen) ---- */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') load();
+      if (state === 'active') load({ silent: true });
     });
     return () => sub.remove();
   }, [load]);
+
+  /* ---- defense-in-depth: never let the spinner wedge ---- */
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => {
+      loadSeq.current += 1; // abandon any in-flight load() so it can't overwrite
+      setLoading(false);
+      setError('Load timeout. Pull down to retry.');
+    }, 10_000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   /* ---- optimistic own-guess merge for the autosave path ---- */
   const applyMyGuess = useCallback(
