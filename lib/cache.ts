@@ -119,29 +119,43 @@ export function writeSnapshot<T>(userId: string, slot: string, data: T): void {
   }
 }
 
-/** Placeholder — fully implemented in Task 3. */
-export function removeSnapshot(userId: string, slot: string): void {
-  AsyncStorage.removeItem(cacheKey(userId, slot)).catch(() => {});
+/** Cancel any pending trailing write for a key. */
+function cancelPending(key: string): void {
+  const p = pendingWrites.get(key);
+  if (p?.trailingHandle) clearTimeout(p.trailingHandle);
+  pendingWrites.delete(key);
 }
 
-/** Placeholder — fully implemented in Task 3. */
+/**
+ * Remove a single (userId, slot) key for the current CACHE_VERSION and cancel any
+ * pending write for it. Fire-and-forget; errors swallowed. Used for pool-switch
+ * hygiene (drop only the previous pool's slot).
+ */
+export function removeSnapshot(userId: string, slot: string): void {
+  const key = cacheKey(userId, slot);
+  cancelPending(key);
+  AsyncStorage.removeItem(key).catch(() => {});
+}
+
+/**
+ * Clear ALL cache keys for a user across ALL versions and cancel pending writes.
+ * MUST be awaited before supabase.auth.signOut() so user B never reads user A's
+ * data. No-op when userId is falsy.
+ */
 export async function clearSnapshots(
   userId: string | undefined,
 ): Promise<void> {
   if (!userId) return;
   const prefix = `quiniela.cache.${userId}.`;
-  // Cancel any in-flight throttle windows for this user.
-  for (const [key, p] of pendingWrites) {
-    if (key.startsWith(prefix)) {
-      if (p.trailingHandle !== null) clearTimeout(p.trailingHandle);
-      pendingWrites.delete(key);
-    }
+  // Snapshot keys first (cancelPending mutates the map during iteration).
+  for (const key of [...pendingWrites.keys()]) {
+    if (key.startsWith(prefix)) cancelPending(key);
   }
   try {
     const allKeys = await AsyncStorage.getAllKeys();
     const userKeys = allKeys.filter((k) => k.startsWith(prefix));
     if (userKeys.length > 0) await AsyncStorage.multiRemove(userKeys);
   } catch {
-    // Swallow.
+    // Swallow: a stale key remains until next sign-out or version bump.
   }
 }

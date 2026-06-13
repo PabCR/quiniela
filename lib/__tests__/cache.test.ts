@@ -175,3 +175,107 @@ describe('write coalescing (leading-edge + trailing throttle)', () => {
     expect(AsyncStorage.setItem).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('removeSnapshot', () => {
+  it('removes a single slot and leaves others', async () => {
+    writeSnapshot(UID, 'session', { a: 1 });
+    writeSnapshot(UID, 'pool-1', { b: 2 });
+    removeSnapshot(UID, 'session');
+    expect(await readSnapshot(UID, 'session')).toBeNull();
+    expect(await readSnapshot(UID, 'pool-1')).toEqual({ b: 2 });
+  });
+
+  it('cancels a pending trailing write before removing', async () => {
+    vi.useFakeTimers();
+    writeSnapshot(UID, 'session', { a: 1 }); // leading — writes immediately
+    writeSnapshot(UID, 'session', { a: 2 }); // schedules trailing
+    removeSnapshot(UID, 'session');
+    await vi.advanceTimersByTimeAsync(300); // trailing must NOT re-create the key
+    expect(
+      store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.session`],
+    ).toBeUndefined();
+    vi.useRealTimers();
+  });
+});
+
+describe('clearSnapshots', () => {
+  beforeEach(() => {
+    store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.session`] = envelopeFor(
+      UID,
+      'session',
+      { a: 1 },
+    );
+    store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.pool-1`] = envelopeFor(
+      UID,
+      'pool-1',
+      { b: 2 },
+    );
+    // An orphaned old-version key for the same user.
+    store.map[`quiniela.cache.${UID}.0.session`] = '{"v":0}';
+    // Unrelated keys that MUST survive.
+    store.map['quiniela.lang'] = 'es';
+    store.map['sb-localhost-auth-token'] = 'tok';
+    // A different user's key.
+    store.map[`quiniela.cache.user-2.${CACHE_VERSION}.session`] = envelopeFor(
+      'user-2',
+      'session',
+      { c: 3 },
+    );
+  });
+
+  it('removes all cache keys for the user across versions', async () => {
+    await clearSnapshots(UID);
+    expect(store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.session`]).toBeUndefined();
+    expect(store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.pool-1`]).toBeUndefined();
+    expect(store.map[`quiniela.cache.${UID}.0.session`]).toBeUndefined();
+  });
+
+  it('leaves lang, supabase, and other users untouched', async () => {
+    await clearSnapshots(UID);
+    expect(store.map['quiniela.lang']).toBe('es');
+    expect(store.map['sb-localhost-auth-token']).toBe('tok');
+    expect(
+      store.map[`quiniela.cache.user-2.${CACHE_VERSION}.session`],
+    ).toBeDefined();
+  });
+
+  it('calls multiRemove with exactly the user cache keys', async () => {
+    await clearSnapshots(UID);
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledTimes(1);
+    const passed = vi.mocked(AsyncStorage.multiRemove).mock.calls[0][0];
+    expect(passed).toHaveLength(3);
+    expect(passed).toEqual(
+      expect.arrayContaining([
+        `quiniela.cache.${UID}.${CACHE_VERSION}.session`,
+        `quiniela.cache.${UID}.${CACHE_VERSION}.pool-1`,
+        `quiniela.cache.${UID}.0.session`,
+      ]),
+    );
+  });
+
+  it('is idempotent — a second call does not throw or re-remove', async () => {
+    await clearSnapshots(UID);
+    await clearSnapshots(UID);
+    // Second call: matching keys already gone, so multiRemove fires only once.
+    expect(AsyncStorage.multiRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('is a no-op when userId is undefined', async () => {
+    await clearSnapshots(undefined);
+    expect(AsyncStorage.multiRemove).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending trailing write before clearing', async () => {
+    // Inline fake timers here (not in beforeEach) so the describe's key-seeding
+    // above runs under real Date.now() and stays within MAX_CACHE_AGE_MS.
+    vi.useFakeTimers();
+    writeSnapshot(UID, 'pool-1', { n: 1 }); // leading
+    writeSnapshot(UID, 'pool-1', { n: 2 }); // schedules trailing
+    await clearSnapshots(UID); // must cancel the trailing AND remove keys
+    await vi.advanceTimersByTimeAsync(300); // trailing must NOT re-create the key
+    expect(
+      store.map[`quiniela.cache.${UID}.${CACHE_VERSION}.pool-1`],
+    ).toBeUndefined();
+    vi.useRealTimers();
+  });
+});
