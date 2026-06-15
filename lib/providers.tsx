@@ -34,6 +34,7 @@ import {
 
 import { makeT, type Translate } from './i18n';
 import { registerAppStateAutoRefresh, supabase } from './supabase';
+import { clearSnapshots, readSnapshot, writeSnapshot } from './cache';
 import type { Lang, Membership, Profile } from './types';
 
 /* ------------------------------------------------------------------ *
@@ -85,75 +86,164 @@ async function fetchMembership(userId: string): Promise<Membership | null> {
   return (data as Membership | null) ?? null;
 }
 
+/** What SessionProvider persists under the 'session' slot. */
+interface SessionSnapshot {
+  profile: Profile;
+  membership: Membership | null;
+}
+
+/** Last-resort guard: force loading=false if the boot sequence never resolves. */
+const BOOT_TIMEOUT_MS = 20_000;
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [loading, setLoading] = useState(true);
+  // Bumped only on SIGNED_IN / INITIAL_SESSION so re-login re-fetches even when
+  // user.id is unchanged; NOT bumped on TOKEN_REFRESHED (no refetch needed).
+  const [authGen, setAuthGen] = useState(0);
 
-  // Guards against a stale async resolve overwriting a newer auth state.
-  const loadSeq = useRef(0);
+  const loadSeq = useRef(0); // guards against a stale async resolve winning
+  const resolvedRef = useRef(false); // has loading been resolved legitimately?
 
-  const loadFor = useCallback(async (next: Session | null) => {
-    const seq = ++loadSeq.current;
-    if (!next) {
-      if (seq === loadSeq.current) {
-        setProfile(null);
-        setMembership(null);
-      }
-      return;
-    }
-    const [p, m] = await Promise.all([
-      fetchProfile(next.user.id),
-      fetchMembership(next.user.id),
-    ]);
-    if (seq === loadSeq.current) {
-      setProfile(p);
-      setMembership(m);
-    }
-  }, []);
-
-  // Initial session + subscription to auth changes.
+  // ── Boot: register the (sync) auth subscription, then seed session from disk.
   useEffect(() => {
     let active = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      setSession(data.session);
-      await loadFor(data.session);
-      if (active) setLoading(false);
-    });
+    // Arm the last-resort timeout before any async work.
+    const timeoutId = setTimeout(() => {
+      if (active && !resolvedRef.current) {
+        resolvedRef.current = true;
+        setLoading(false);
+      }
+    }, BOOT_TIMEOUT_MS);
 
+    // SYNC-ONLY callback: no await, no supabase.* calls. Any supabase call here
+    // re-acquires the held GoTrue lock and deadlocks the app (spec §2).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, next) => {
+    } = supabase.auth.onAuthStateChange((event, next) => {
       if (!active) return;
       setSession(next);
-      await loadFor(next);
-      if (active) setLoading(false);
+      if (next) {
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          setAuthGen((g) => g + 1);
+        }
+      } else {
+        // SIGNED_OUT: clear eagerly and resolve the gate. No clearTimeout here —
+        // resolvedRef=true makes the pending boot timeout a no-op when it fires.
+        setProfile(null);
+        setMembership(null);
+        resolvedRef.current = true;
+        setLoading(false);
+      }
+    });
+
+    // Seed session from disk (local, no network, no GoTrue lock held here).
+    supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      if (data.session) {
+        setAuthGen((g) => g + 1);
+      } else {
+        setProfile(null);
+        setMembership(null);
+        resolvedRef.current = true;
+        setLoading(false);
+        clearTimeout(timeoutId);
+      }
     });
 
     const unregisterRefresh = registerAppStateAutoRefresh();
 
     return () => {
       active = false;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
       unregisterRefresh();
     };
-  }, [loadFor]);
+  }, []);
+
+  // ── Profile/membership load — runs OUTSIDE the GoTrue lock (the deadlock fix).
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId) return;
+
+    const seq = ++loadSeq.current;
+    let active = true;
+
+    (async () => {
+      // 1) Cache-first (disk, ~ms): hydrate and resolve the gate immediately.
+      const snap = await readSnapshot<SessionSnapshot>(userId, 'session');
+      if (!active || seq !== loadSeq.current) return;
+      if (snap) {
+        setProfile(snap.profile);
+        setMembership(snap.membership);
+        resolvedRef.current = true;
+        setLoading(false);
+      }
+
+      // 2) Revalidate over the network (outside the lock).
+      const [p, m] = await Promise.all([
+        fetchProfile(userId),
+        fetchMembership(userId),
+      ]);
+      if (!active || seq !== loadSeq.current) return;
+
+      // Update on a successful fetch (profile present) or when there was no
+      // cache to fall back on. If both came back null AND we already showed a
+      // cache snapshot, keep the cached values (likely a transient failure).
+      if (p !== null || m !== null || !snap) {
+        setProfile(p);
+        setMembership(m);
+        resolvedRef.current = true;
+        setLoading(false);
+      }
+
+      // Persist fresh data for the next cold launch (only when a profile exists;
+      // a not-yet-onboarded user stays a cache miss so the gate re-checks).
+      if (p !== null) {
+        writeSnapshot<SessionSnapshot>(userId, 'session', {
+          profile: p,
+          membership: m,
+        });
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [session?.user.id, authGen]);
 
   const refresh = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    setSession(data.session);
-    await loadFor(data.session);
-  }, [loadFor]);
+    const userId = session?.user.id;
+    if (!userId) return;
+    const seq = ++loadSeq.current;
+    const [p, m] = await Promise.all([
+      fetchProfile(userId),
+      fetchMembership(userId),
+    ]);
+    if (seq !== loadSeq.current) return;
+    setProfile(p);
+    setMembership(m);
+    if (p !== null) {
+      writeSnapshot<SessionSnapshot>(userId, 'session', {
+        profile: p,
+        membership: m,
+      });
+    }
+  }, [session?.user.id]);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-    // onAuthStateChange clears state, but clear eagerly for snappy UI.
+    const userId = session?.user.id;
+    // ORDERING: clear cache BEFORE signOut so a pending flush can't reinstate it
+    // and the next user starts clean.
+    await clearSnapshots(userId);
     setProfile(null);
     setMembership(null);
-  }, []);
+    await supabase.auth.signOut();
+  }, [session?.user.id]);
 
   const value = useMemo<SessionContextValue>(
     () => ({ session, profile, membership, loading, refresh, signOut }),
