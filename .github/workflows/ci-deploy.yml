@@ -1,0 +1,84 @@
+name: CI & OTA Deploy
+
+# Promotion flow:
+#   feature/* --PR--> preview (default) --push--> OTA to EAS "preview" channel
+#                          --PR--> main (protected) --push--> OTA to EAS "production" channel
+#
+# - verify (lint + typecheck + tests) runs on every PR and push and gates the OTA.
+# - ota-update publishes only on a push to preview/main (i.e. after a PR merges),
+#   mapping git `main` -> EAS `production` and git `preview` -> EAS `preview`.
+
+on:
+  push:
+    branches: [preview, main]
+  pull_request:
+    branches: [preview, main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # EXPO_PUBLIC_* are inlined into the JS bundle at publish/export time. `eas update`
+  # does NOT read the eas.json build-profile `env`, and there are no EAS-hosted env
+  # vars, so we set the (publishable) Supabase values here to keep OTA parity with
+  # builds. Preview and production currently share one backend; split these per-job
+  # if that ever changes.
+  EXPO_PUBLIC_SUPABASE_URL: https://dctjihgmpcqbbigjetkk.supabase.co
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: sb_publishable_hp-foxCr15ibq02ConSjRQ_Vj-N_0ZJ
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Test
+        run: npm run test
+
+  ota-update:
+    name: ota-update
+    needs: verify
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Resolve EAS target (git main -> EAS production)
+        id: target
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "name=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=preview" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish OTA update
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+          SHA: ${{ github.sha }}
+        run: |
+          MESSAGE="${MSG:-CI deploy ${SHA}}"
+          eas update \
+            --branch "${{ steps.target.outputs.name }}" \
+            --environment "${{ steps.target.outputs.name }}" \
+            --message "$MESSAGE" \
+            --non-interactive
