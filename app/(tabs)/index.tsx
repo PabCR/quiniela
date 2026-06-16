@@ -56,10 +56,14 @@ export default function MatchesScreen() {
 
   const [filter, setFilter] = useState<Filter>('all');
 
-  // Re-fetch when the screen regains focus (brief §9 fallback to realtime).
+  // Silently re-validate when the screen regains focus (brief §9 fallback to
+  // realtime). MUST be silent: a non-silent refetch flips the shared `loading`
+  // flag and blanks the already-rendered list behind the spinner on every
+  // return. Silent = background swap-in-place, matching the AppState foreground
+  // path in lib/data.tsx.
   useFocusEffect(
     useCallback(() => {
-      refetch();
+      refetch({ silent: true });
     }, [refetch]),
   );
 
@@ -102,7 +106,12 @@ export default function MatchesScreen() {
     });
   }, [games, filter, pendingIds, now, lang, t]);
 
-  if (loading) {
+  // Full-screen spinner only on a true cold start — when there is genuinely
+  // nothing to show (no cache, no in-memory data). A background revalidation
+  // (loading=true while games are already present) must never blank the list;
+  // it updates the rows in place. Mirrors the detail screens, which gate on
+  // their own data (!game / !member) rather than a shared loading flag.
+  if (loading && games.length === 0) {
     return (
       <View className="flex-1 items-center justify-center bg-bg">
         <ActivityIndicator color={COLOR_TEXT} />

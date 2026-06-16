@@ -84,8 +84,13 @@ interface PoolDataValue {
   /** Everyone's visible picks: gameId → userId → Guess (RLS-gated). */
   guessesByGame: AllGuesses;
 
-  /** Force a full reload of every collection. */
-  refetch: () => Promise<void>;
+  /**
+   * Reload every collection. Default (non-silent) shows the spinner via the
+   * `loading` flag — for pull-to-refresh / cold retry. Pass `{ silent: true }`
+   * for a background revalidation that swaps fresh data in place without
+   * flipping `loading` (used by the focus + AppState foreground fallbacks).
+   */
+  refetch: (opts?: { silent?: boolean }) => Promise<void>;
   /**
    * Optimistically merge the caller's own guess for a game into local state
    * (used by the match-detail autosave so the UI reflects the pick instantly
@@ -238,14 +243,14 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
       const teamsMap = indexTeams((teamsRes.data ?? []) as never);
       const gamesData = (gamesRes.data ?? []) as Game[];
       const membersData = (
-        (membersRes.data ?? []) as Array<{
+        (membersRes.data ?? []) as {
           user_id: string;
           role: 'admin' | 'player';
           hidden: boolean;
           profiles:
             | Pick<Profile, 'name' | 'emoji'>
             | Pick<Profile, 'name' | 'emoji'>[];
-        }>
+        }[]
       ).map((m) => {
         const prof = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
         return {
@@ -293,6 +298,13 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
         removeSnapshot(myId, `pool-${prevPoolIdRef.current}`);
       }
       prevPoolIdRef.current = null;
+      // Intentional state reset on a deliberate key change (poolId → null: sign-
+      // out / pool-exit). Clears server data held in state — filled async from
+      // cache/network, so not derivable during render — and is the cold-start
+      // guarantee the spinner gate (loading && games empty) relies on. This is
+      // synchronization to a key change, not the cascading-render smell the rule
+      // targets; co-located side effects (loadSeq, removeSnapshot) must run here.
+      /* eslint-disable react-hooks/set-state-in-effect */
       setLoading(false);
       setError(null);
       setPool(null);
@@ -300,6 +312,7 @@ export function PoolDataProvider({ children }: { children: ReactNode }) {
       setMembers([]);
       setAllGuesses([]);
       setTeams({});
+      /* eslint-enable react-hooks/set-state-in-effect */
       return;
     }
 
@@ -610,7 +623,7 @@ export function useWhoPicked(gameId: number | undefined): {
         } else {
           // RPC returns setof uuid → supabase-js shapes it as [{ who_picked: uuid }]
           // or [uuid] depending on version; normalise both.
-          const rows = (data ?? []) as Array<string | { who_picked: string }>;
+          const rows = (data ?? []) as (string | { who_picked: string })[];
           setPickers(rows.map((r) => (typeof r === 'string' ? r : r.who_picked)));
         }
         setLoading(false);
@@ -618,6 +631,10 @@ export function useWhoPicked(gameId: number | undefined): {
   }, [gameId]);
 
   useEffect(() => {
+    // Data-fetching effect: refetch() sets loading/pickers to fetch on gameId
+    // change. This layer deliberately avoids react-query (file header), so a
+    // fetch-driven setState here is intended, not the cascading-render smell.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refetch();
   }, [refetch]);
 
