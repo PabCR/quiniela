@@ -51,6 +51,9 @@ export default function MeScreen() {
 
   const [picking, setPicking] = useState(false);
   const [savingEmoji, setSavingEmoji] = useState(false);
+  // Drives the segmented-control highlight independently of the active `lang`,
+  // so the slider moves on tap before the refresh that actually applies it.
+  const [pendingLang, setPendingLang] = useState<import('../../lib/types').Lang | null>(null);
 
   // Build AllPicks map for standings computation
   const allPicks = useMemo(() => {
@@ -114,6 +117,28 @@ export default function MeScreen() {
     await refresh();
     setSavingEmoji(false);
     setPicking(false);
+  }
+
+  function handlePickLang(next: import('../../lib/types').Lang) {
+    // No-op on the already-active language; ignore taps mid-refresh.
+    if (next === lang || pendingLang) return;
+    // Move the highlight immediately, then confirm before applying.
+    setPendingLang(next);
+    Alert.alert(t('langRefreshTitle'), t('langRefreshBody'), [
+      {
+        text: t('cancel'),
+        style: 'cancel',
+        onPress: () => setPendingLang(null),
+      },
+      {
+        text: t('actionRefresh'),
+        onPress: async () => {
+          await setLang(next); // write-through (awaits the DB commit)
+          await refresh(); // refetch profile → derived `lang` flips → UI re-renders
+          setPendingLang(null);
+        },
+      },
+    ]);
   }
 
   async function handleSignOut() {
@@ -199,13 +224,13 @@ export default function MeScreen() {
             {/* Segmented control */}
             <View className="flex-row rounded-pill bg-surface-2 p-[3px]" style={{ gap: 2 }}>
               {(['es', 'en'] as const).map((l) => {
-                const active = lang === l;
+                const active = (pendingLang ?? lang) === l;
                 return (
                   <Pressable
                     key={l}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active }}
-                    onPress={() => setLang(l)}
+                    onPress={() => handlePickLang(l)}
                     className={
                       'flex-1 items-center justify-center rounded-pill ' +
                       (active ? 'bg-accent' : 'bg-transparent')
