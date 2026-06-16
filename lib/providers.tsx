@@ -271,8 +271,11 @@ const LANG_STORAGE_KEY = 'quiniela.lang';
 
 interface LangContextValue {
   lang: Lang;
-  /** Set the active language; persists to AsyncStorage and (if authed) profile. */
-  setLang: (lang: Lang) => void;
+  /**
+   * Set the active language; persists to AsyncStorage and (if authed) profile.
+   * Awaitable so callers can refetch the profile only after the write commits.
+   */
+  setLang: (lang: Lang) => Promise<void>;
 }
 
 const LangContext = createContext<LangContextValue | null>(null);
@@ -304,16 +307,14 @@ export function LangProvider({ children }: { children: ReactNode }) {
   const lang: Lang = profile?.lang ?? stored ?? detected;
 
   const setLang = useCallback(
-    (next: Lang) => {
+    async (next: Lang) => {
       setStored(next);
-      AsyncStorage.setItem(LANG_STORAGE_KEY, next).catch(() => {});
+      await AsyncStorage.setItem(LANG_STORAGE_KEY, next).catch(() => {});
       // If signed in with a profile, write through so the board reflects it.
+      // Awaited so a follow-up profile refetch reads the committed value, not
+      // the stale one (the derived `lang` is profile?.lang ?? stored ?? …).
       if (profile) {
-        supabase
-          .from('profiles')
-          .update({ lang: next })
-          .eq('id', profile.id)
-          .then(() => {});
+        await supabase.from('profiles').update({ lang: next }).eq('id', profile.id);
       }
     },
     [profile],
