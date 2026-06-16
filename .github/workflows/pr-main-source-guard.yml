@@ -1,0 +1,24 @@
+name: Guard main PR source
+
+# GitHub branch protection has no native "head branch must be X" rule, so this
+# required check enforces that pull requests into `main` originate only from the
+# `preview` branch. Make `verify-source` a required status check on `main`.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify-source:
+    name: verify-source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require PRs into main to come from preview
+        env:
+          HEAD: ${{ github.head_ref }}
+        run: |
+          if [ "$HEAD" != "preview" ]; then
+            echo "::error::PRs into main are only allowed from 'preview' (got '$HEAD'). Promote via: feature -> preview -> main."
+            exit 1
+          fi
+          echo "Source branch '$HEAD' is allowed."
